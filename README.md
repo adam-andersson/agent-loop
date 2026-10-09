@@ -14,6 +14,7 @@ Opus implements (feature skill, outside-in TDD) and stops ──► code-gate: C
 
 Claude Code's plan approval dialog shows neither a hook's reason nor its `systemMessage`, so whenever the plan gate hands the plan to the user it appends a `## Codex review` section to the plan through `updatedInput`; that is what the dialog displays. The code gate's outcomes reach the user as one-line `systemMessage` notices.
 
+- Both gates prompt Codex for an adversarial review, adapted from the Codex plugin's `prompts/adversarial-review.md`: tagged blocks for stance, attack surface (one for plans, one for code), finding bar, grounding and calibration, with the plan, diff and dispositions last as untrusted data that is never closed. Every evidenced blocker must be reported in whatever round it is found, because the gate passes once none is open.
 - Codex always runs read-only with an explicit model (`hooks/codex-review/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
 - Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
 - The hooks own `ledger.json` (findings, rounds, snapshots, raw Codex outputs under `reviews/`). Opus writes only `dispositions.json`, which Codex sees as claims to verify; dispositions never close a finding. Only Codex's `resolved` or `withdrawn` does, and a carried finding it doesn't mention stays open.
