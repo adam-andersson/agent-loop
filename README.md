@@ -1,0 +1,56 @@
+# agent-loop
+
+Claude Code hooks and skills that put Codex review gates around Opus planning and implementation:
+
+```
+Opus plans ──ExitPlanMode──► plan-gate: Codex reviews the plan
+   ▲                           │ blocking findings → deny, Opus triages (codex-review skill) and revises
+   └───────────────────────────┘ approve / escalate / not reviewed → "ask": the user approves or rejects
+User approves ──► plan-approved: records the plan and snapshots the tree, turns on the code gate
+Opus implements (feature skill, outside-in TDD) and stops ──► code-gate: Codex reviews the cycle's diff
+   ▲                           │ blocking findings → block the stop, Opus triages and fixes
+   └───────────────────────────┘ pass → next section; escalate / not reviewed → one-line notice to the user
+```
+
+- Codex always runs read-only with an explicit model (`hooks/codex-review/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
+- Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
+- The hooks own `ledger.json` (findings, rounds, snapshots, raw Codex outputs under `reviews/`). Opus writes only `dispositions.json`, which Codex sees as claims to verify; dispositions never close a finding. Only Codex's `resolved` or `withdrawn` does, and a carried finding it doesn't mention stays open.
+- Escalation to the user: the round cap, a `needs-human` disposition, or Codex keeping open a finding Opus rejected with evidence.
+- State lives in `~/.cache/claude-codex-review/<session>/<repo-hash>/`.
+
+## Install
+
+```bash
+ln -s ~/dev/agent-loop/hooks/codex-review ~/.claude/hooks/codex-review
+ln -s ~/dev/agent-loop/skills/feature ~/.claude/skills/feature
+ln -s ~/dev/agent-loop/skills/codex-review ~/.claude/skills/codex-review
+ln -s ~/dev/agent-loop/codex/AGENTS.md ~/.codex/AGENTS.md
+```
+
+Then add to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-gate.mjs\"", "timeout": 1500 }] }
+    ],
+    "PostToolUse": [
+      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-approved.mjs\"" }] }
+    ],
+    "Stop": [
+      { "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/code-gate.mjs\"", "timeout": 1500 }] }
+    ]
+  }
+}
+```
+
+and import the shared agreements in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS.md`. Keep the Codex plugin's own stop review gate disabled.
+
+## Test
+
+```bash
+npm test
+```
+
+Codex is replaced by `hooks/codex-review/test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.

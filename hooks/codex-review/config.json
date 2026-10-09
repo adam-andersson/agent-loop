@@ -1,0 +1,6 @@
+{
+  "model": "gpt-6.1-sol",
+  "planRounds": 3,
+  "codeRounds": 3,
+  "timeoutSec": 1200
+}

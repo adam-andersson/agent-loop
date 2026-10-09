@@ -1,0 +1,12 @@
+{
+  "name": "agent-loop",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code hooks and skills that put Codex review gates around Opus planning and implementation",
+  "scripts": {
+    "test": "node --test 'hooks/codex-review/test/*.test.mjs'"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}
