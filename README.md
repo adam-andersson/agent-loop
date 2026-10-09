@@ -18,7 +18,7 @@ Claude Code's plan approval dialog shows neither a hook's reason nor its `system
 - Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
 - The hooks own `ledger.json` (findings, rounds, snapshots, raw Codex outputs under `reviews/`). Opus writes only `dispositions.json`, which Codex sees as claims to verify; dispositions never close a finding. Only Codex's `resolved` or `withdrawn` does, and a carried finding it doesn't mention stays open.
 - Escalation to the user: the round cap, a `needs-human` disposition, or Codex keeping open a finding Opus rejected with evidence.
-- State lives in `~/.cache/claude-codex-review/<session>/<repo-hash>/`.
+- State lives in `~/.cache/claude-codex-review/<session>/<repo-hash>/`, one per session and repository, shared by all its worktrees: a plan approved in the main checkout gates code stopped in a worktree. An escalation pause belongs to the checkout that escalated and ends only on a commit there.
 
 ## Install
 

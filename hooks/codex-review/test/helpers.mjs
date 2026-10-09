@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ledgerPaths, loadLedger } from "../lib/ledger.mjs";
+import { ledgerPaths, loadLedger, saveLedger } from "../lib/ledger.mjs";
 
 const hooksDir = fileURLToPath(new URL("..", import.meta.url));
 const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
@@ -105,14 +105,22 @@ export function setup({ repo = true, config = {} } = {}) {
     write(file, content) {
       writeFileSync(path.join(cwd, file), content);
     },
-    commitEmpty(message) {
+    commitEmpty(message, dir = cwd) {
       execFileSync("git", [
-        "-C", cwd, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", message,
+        "-C", dir, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", message,
       ]);
     },
-    commitAll(message) {
-      execFileSync("git", ["-C", cwd, "add", "-A"]);
-      execFileSync("git", ["-C", cwd, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", message]);
+    commitAll(message, dir = cwd) {
+      execFileSync("git", ["-C", dir, "add", "-A"]);
+      execFileSync("git", ["-C", dir, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", message]);
+    },
+    addWorktree(name) {
+      const worktree = path.join(base, name);
+      execFileSync("git", ["-C", cwd, "worktree", "add", "-q", "-b", name, worktree]);
+      return worktree;
+    },
+    seedLedger(key, ledger) {
+      saveLedger(ledgerPaths(home, context.sessionId, key), ledger);
     },
   };
   return context;

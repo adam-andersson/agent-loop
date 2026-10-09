@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseDispositions } from "./decide.mjs";
-import { repoRoot } from "./git.mjs";
+import { repoRoot, sharedStateKey } from "./git.mjs";
 import { ledgerPaths, loadLedger, readDispositions } from "./ledger.mjs";
 
 const DEFAULT_CONFIG = fileURLToPath(new URL("../config.json", import.meta.url));
@@ -17,10 +17,19 @@ export function hookContext(input, env = process.env) {
   const config = JSON.parse(readFileSync(env.CODEX_REVIEW_CONFIG ?? DEFAULT_CONFIG, "utf8"));
   const root = repoRoot(input.cwd);
   const home = env.CODEX_REVIEW_HOME ?? path.join(homedir(), ".cache", "claude-codex-review");
-  const paths = ledgerPaths(home, input.session_id, root ?? input.cwd);
+  const stateRoot = resolveStateRoot(home, input.session_id, root, input.cwd);
+  const paths = ledgerPaths(home, input.session_id, stateRoot);
   const ledger = loadLedger(paths);
   const { dispositions, ignored } = parseDispositions(readDispositions(paths), Object.keys(ledger.findings));
-  return { config, root, paths, ledger, dispositions, ignored };
+  return { config, root, stateRoot, paths, ledger, dispositions, ignored };
+}
+
+// State used to be keyed on the checkout's own toplevel; a ledger already there wins, so state
+// written under that key is still found. New state is shared by all worktrees of the repository.
+function resolveStateRoot(home, sessionId, root, cwd) {
+  if (!root) return cwd;
+  if (existsSync(ledgerPaths(home, sessionId, root).ledger)) return root;
+  return sharedStateKey(cwd) ?? root;
 }
 
 export function openFindings(ledger, phase) {

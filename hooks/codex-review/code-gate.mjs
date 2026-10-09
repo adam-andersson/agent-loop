@@ -20,6 +20,7 @@ import {
 function escalate(context, message) {
   const { code } = context.ledger;
   code.escalated = true;
+  code.escalatedRoot = context.root;
   code.escalatedAtHead = headCommit(context.root);
   saveLedger(context.paths, context.ledger);
   emit({ systemMessage: message });
@@ -27,6 +28,7 @@ function escalate(context, message) {
 
 function resumeAfterCommit(code, head) {
   code.escalated = false;
+  code.escalatedRoot = null;
   code.escalatedAtHead = null;
   code.rounds = 0;
   code.cycleBase = head;
@@ -38,13 +40,17 @@ function resumeAfterCommit(code, head) {
 function main() {
   const input = readHookInput();
   const context = hookContext(input);
-  const { config, root, paths, ledger, dispositions, ignored } = context;
+  const { config, root, stateRoot, paths, ledger, dispositions, ignored } = context;
   const { code } = ledger;
   if (!code.active || !root) return;
 
   if (code.escalated) {
-    if (headCommit(root) === code.escalatedAtHead) return;
-    resumeAfterCommit(code, headTree(root));
+    // The pause belongs to the checkout that escalated; a ledger from before escalatedRoot was
+    // keyed on that checkout. Only a commit there ends it; a removed checkout resumes here.
+    const origin = code.escalatedRoot ?? stateRoot;
+    const originHead = headCommit(origin);
+    if (originHead === code.escalatedAtHead) return;
+    resumeAfterCommit(code, headTree(originHead ? origin : root));
     acknowledgeHandOffs(ledger);
   }
 
