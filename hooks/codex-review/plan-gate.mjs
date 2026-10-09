@@ -16,17 +16,23 @@ import {
   triageInstructions,
 } from "./lib/runtime.mjs";
 
-function respond(permissionDecision, permissionDecisionReason, notice = permissionDecisionReason.split("\n")[0]) {
+function respond(
+  permissionDecision,
+  permissionDecisionReason,
+  { notice = permissionDecisionReason.split("\n")[0], updatedInput } = {}
+) {
   emit({
     systemMessage: notice,
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason },
+    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason, updatedInput },
   });
 }
 
-function askUser(context, plan, reason) {
+function askUser(context, input, plan, reason) {
   context.ledger.plan.awaitingHuman = { planHash: createHash("sha256").update(plan).digest("hex") };
   saveLedger(context.paths, context.ledger);
-  respond("ask", reason);
+  respond("ask", reason, {
+    updatedInput: { ...input.tool_input, plan: `${plan}\n\n---\n\n## Codex review\n\n${reason}\n` },
+  });
 }
 
 function main() {
@@ -47,6 +53,7 @@ function main() {
     recordHandOff(ledger, waiting, dispositions);
     askUser(
       context,
+      input,
       plan,
       `Codex review paused: Opus marked ${waiting.map((finding) => finding.id).join(", ")} needs-human.\n${waiting
         .map((finding) => `${formatFinding(finding)}\n  Opus: ${dispositions[finding.id].evidence}`)
@@ -72,7 +79,7 @@ function main() {
   ledger.reviews.push({ phase: "plan", round, model: config.model, status: result.status, rawPath: result.rawPath });
 
   if (result.status === "not-reviewed") {
-    askUser(context, plan, `Codex: plan NOT reviewed (${result.reason}). Decide without a review, or reject to retry.`);
+    askUser(context, input, plan, `Codex: plan NOT reviewed (${result.reason}). Decide without a review, or reject to retry.`);
     return;
   }
 
@@ -99,15 +106,18 @@ function main() {
       `${header}: revise. ${result.review.summary}\nBlocking:\n${decision.openBlocking.map(formatFinding).join("\n")}${
         others.length > 0 ? `\nOther open findings:\n${others.map(formatFinding).join("\n")}` : ""
       }\n${triageInstructions(paths, ignored)} Then revise the plan and call ExitPlanMode again.`,
-      `${header}: revise, ${decision.openBlocking.length} blocking finding${
-        decision.openBlocking.length === 1 ? "" : "s"
-      } sent back to Opus.`
+      {
+        notice: `${header}: revise, ${decision.openBlocking.length} blocking finding${
+          decision.openBlocking.length === 1 ? "" : "s"
+        } sent back to Opus.`,
+      }
     );
     return;
   }
   if (decision.outcome === "escalate") {
     askUser(
       context,
+      input,
       plan,
       `${header}: needs your decision (${decision.reasons.join("; ")}).\n${decision.openBlocking.map(formatFinding).join("\n")}`
     );
@@ -116,6 +126,7 @@ function main() {
   const nonBlocking = openFindings(ledger, "plan");
   askUser(
     context,
+    input,
     plan,
     `${header}: approve. ${result.review.summary}${
       nonBlocking.length > 0

@@ -25,6 +25,29 @@ test("asks the user, never allows, when Codex approves", () => {
   assert.ok(t.ledger().plan.awaitingHuman.planHash);
 });
 
+test("shows Codex's verdict in the approval dialog by appending it to the plan", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ summary: "Looks sound." }));
+  const input = exitPlanMode("# The plan\n\nSteps.");
+  input.tool_input.planFilePath = "/home/.claude/plans/the-plan.md";
+  const { updatedInput } = decision(t.run("plan-gate.mjs", input));
+  assert.equal(updatedInput.planFilePath, "/home/.claude/plans/the-plan.md");
+  assert.ok(updatedInput.plan.startsWith("# The plan\n\nSteps."));
+  assert.match(updatedInput.plan, /## Codex review\n\nCodex plan review \(gpt-6\.1-sol, round 1\/3\): approve\. Looks sound\./);
+});
+
+test("shows a failed review in the approval dialog too", () => {
+  const t = setup();
+  const result = t.run("plan-gate.mjs", exitPlanMode(), { FAKE_CODEX_MODE: "exit-nonzero" });
+  assert.match(decision(result).updatedInput.plan, /## Codex review\n\nCodex: plan NOT reviewed/);
+});
+
+test("does not rewrite the plan when it goes back to Opus", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }));
+  assert.equal(decision(t.run("plan-gate.mjs", exitPlanMode())).updatedInput, undefined);
+});
+
 test("asks the user when the review failed, and does not count a round", () => {
   const t = setup();
   const result = t.run("plan-gate.mjs", exitPlanMode(), { FAKE_CODEX_MODE: "exit-nonzero" });

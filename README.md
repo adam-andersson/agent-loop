@@ -12,7 +12,7 @@ Opus implements (feature skill, outside-in TDD) and stops ──► code-gate: C
    └───────────────────────────┘ pass → next section; escalate → paused until the user commits or approves a plan; not reviewed → notice, stop allowed, retried on the next stop
 ```
 
-Every Codex outcome also shows the user a one-line notice (verdict, round, short summary), because Claude Code's plan approval dialog doesn't display a hook's reason.
+Claude Code's plan approval dialog shows neither a hook's reason nor its `systemMessage`, so whenever the plan gate hands the plan to the user it appends a `## Codex review` section to the plan through `updatedInput`; that is what the dialog displays. The code gate's outcomes reach the user as one-line `systemMessage` notices.
 
 - Codex always runs read-only with an explicit model (`hooks/codex-review/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
 - Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
