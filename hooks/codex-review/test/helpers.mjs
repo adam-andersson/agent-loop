@@ -123,7 +123,12 @@ export function exitPlanMode(plan = "# Plan\n\nAcceptance criteria: x. Coverage:
 }
 
 export function planApproved(plan = "# Plan\n\nAcceptance criteria: x. Coverage: unit + e2e.") {
-  return { hook_event_name: "PostToolUse", tool_name: "ExitPlanMode", tool_input: { plan }, tool_response: {} };
+  return {
+    hook_event_name: "PostToolUse",
+    tool_name: "ExitPlanMode",
+    tool_input: {},
+    tool_response: { plan, isAgent: false, filePath: "/home/.claude/plans/plan.md" },
+  };
 }
 
 export function stop(extra = {}) {

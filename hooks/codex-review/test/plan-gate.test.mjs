@@ -33,6 +33,24 @@ test("asks the user when the review failed, and does not count a round", () => {
   assert.equal(t.ledger().plan.rounds, 0);
 });
 
+test("every outcome tells the user in one line what Codex did with the plan", () => {
+  const t = setup({ config: { planRounds: 2 } });
+  t.respondWith(
+    reviewJson({ verdict: "revise", summary: "Missing coverage.", findings: [blockingFinding()] }),
+    reviewJson({ verdict: "revise", resolutions: [{ id: "P1", status: "still-open", evidence: "e" }] }),
+    reviewJson({ summary: "Looks\nsound.", resolutions: [{ id: "P1", status: "resolved", evidence: "section added" }] })
+  );
+  const blocked = t.run("plan-gate.mjs", exitPlanMode()).output.systemMessage;
+  assert.match(blocked, /^Codex plan review \(gpt-6\.1-sol, round 1\/2\): revise, 1 blocking finding sent back to Opus\.$/);
+  const escalated = t.run("plan-gate.mjs", exitPlanMode("# v2")).output.systemMessage;
+  assert.match(escalated, /^Codex plan review \(gpt-6\.1-sol, round 2\/2\): needs your decision/);
+  assert.doesNotMatch(escalated, /\n/);
+  const approved = t.run("plan-gate.mjs", exitPlanMode("# v3")).output.systemMessage;
+  assert.match(approved, /^Codex plan review \(gpt-6\.1-sol, round 1\/2\): approve\. Looks sound\.$/);
+  const notReviewed = t.run("plan-gate.mjs", exitPlanMode("# v4"), { FAKE_CODEX_MODE: "exit-nonzero" }).output.systemMessage;
+  assert.match(notReviewed, /^Codex: plan NOT reviewed/);
+});
+
 test("asks the user when the hook itself fails", () => {
   const t = setup();
   const result = t.run("plan-gate.mjs", exitPlanMode(), { CODEX_REVIEW_CONFIG: "/nonexistent/config.json" });

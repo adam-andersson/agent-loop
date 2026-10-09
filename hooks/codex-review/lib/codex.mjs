@@ -43,7 +43,7 @@ export function runCodex({ prompt, cwd, outputDir, label, config, env = process.
   }
   const problem = shapeProblem(review);
   if (problem) return notReviewed(problem, rawPath);
-  return { status: "reviewed", review, rawPath };
+  return { status: "reviewed", review: { ...review, summary: review.summary.replace(/\s+/g, " ").trim() }, rawPath };
 }
 
 function notReviewed(reason, rawPath) {

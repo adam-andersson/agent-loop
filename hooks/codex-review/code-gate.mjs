@@ -144,6 +144,12 @@ function main() {
     code.rounds = 0;
     code.cycleBase = tree;
     saveLedger(paths, ledger);
+    const open = openFindings(ledger, "code").length;
+    emit({
+      systemMessage: `Codex code review (${config.model}, round ${round}/${config.codeRounds}): pass. ${result.review.summary}${
+        open > 0 ? ` ${open} non-blocking finding${open === 1 ? "" : "s"} open.` : ""
+      }`,
+    });
     return;
   }
 

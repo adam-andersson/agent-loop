@@ -17,6 +17,15 @@ test("plan approval turns on the code gate with the current tree as the cycle ba
   assert.equal(plan.approved.text, "# The approved plan");
 });
 
+test("plan approval records the plan the user approved, including edits made in the dialog", () => {
+  const t = setup();
+  t.run("plan-approved.mjs", {
+    ...planApproved("# Plan as edited by the user in the dialog"),
+    tool_input: { plan: "# Plan as Opus proposed it" },
+  });
+  assert.equal(t.ledger().plan.approved.text, "# Plan as edited by the user in the dialog");
+});
+
 test("plan approval outside a git repository does not turn on the code gate", () => {
   const t = setup({ repo: false });
   t.run("plan-approved.mjs", planApproved());
@@ -63,6 +72,20 @@ test("reviews again during a stop-hook continuation when the tree changed", () =
   assert.equal(findings.C1.status, "resolved");
   assert.equal(code.cycleBase, code.lastTree);
   assert.equal(code.rounds, 0);
+});
+
+test("a pass tells the user in one line that Codex reviewed the changes", () => {
+  const t = approved();
+  t.respondWith(
+    reviewJson({ summary: "Ships.\n\n", findings: [blockingFinding({ severity: "non-blocking", claim: "naming" })] })
+  );
+  t.write("a.txt", "changed\n");
+  const { output } = t.run("code-gate.mjs", stop());
+  assert.equal(output.decision, undefined);
+  assert.equal(
+    output.systemMessage,
+    "Codex code review (gpt-6.1-sol, round 1/3): pass. Ships. 1 non-blocking finding open."
+  );
 });
 
 test("the prompt reviews the whole cycle, names the round's own changes, and carries findings", () => {

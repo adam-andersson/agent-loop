@@ -16,8 +16,11 @@ import {
   triageInstructions,
 } from "./lib/runtime.mjs";
 
-function respond(permissionDecision, permissionDecisionReason) {
-  emit({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason } });
+function respond(permissionDecision, permissionDecisionReason, notice = permissionDecisionReason.split("\n")[0]) {
+  emit({
+    systemMessage: notice,
+    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason },
+  });
 }
 
 function askUser(context, plan, reason) {
@@ -95,7 +98,10 @@ function main() {
       "deny",
       `${header}: revise. ${result.review.summary}\nBlocking:\n${decision.openBlocking.map(formatFinding).join("\n")}${
         others.length > 0 ? `\nOther open findings:\n${others.map(formatFinding).join("\n")}` : ""
-      }\n${triageInstructions(paths, ignored)} Then revise the plan and call ExitPlanMode again.`
+      }\n${triageInstructions(paths, ignored)} Then revise the plan and call ExitPlanMode again.`,
+      `${header}: revise, ${decision.openBlocking.length} blocking finding${
+        decision.openBlocking.length === 1 ? "" : "s"
+      } sent back to Opus.`
     );
     return;
   }

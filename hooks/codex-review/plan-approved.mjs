@@ -7,7 +7,10 @@ const { root, paths, ledger } = hookContext(input);
 
 ledger.plan.awaitingHuman = null;
 ledger.plan.rounds = 0;
-ledger.plan.approved = { text: input.tool_input?.plan ?? "", at: new Date().toISOString() };
+ledger.plan.approved = {
+  text: input.tool_response?.plan ?? input.tool_input?.plan ?? "",
+  at: new Date().toISOString(),
+};
 acknowledgeHandOffs(ledger);
 
 if (root) {
