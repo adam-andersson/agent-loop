@@ -10,7 +10,7 @@ export type Config = {
 export type HookInput = {
   session_id: string;
   cwd: string;
-  tool_input?: { plan?: string };
+  tool_input?: { plan?: string; [field: string]: unknown };
   tool_response?: { plan?: string };
   last_assistant_message?: string;
 };
@@ -36,6 +36,8 @@ export type CodexResult =
 export type PlanState = {
   round: number;
   lastReport: Review | null;
+  // The token of the review block last appended to the plan in the approval dialog.
+  reviewToken?: string;
 };
 
 export type CodeState = {

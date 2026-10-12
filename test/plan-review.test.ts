@@ -6,6 +6,11 @@ function decision(result: HookResult) {
   return result.output.hookSpecificOutput;
 }
 
+// The plan shown in the approval dialog: the dialog renders the plan, not the reason.
+function dialogPlan(result: HookResult): string {
+  return decision(result).updatedInput.plan;
+}
+
 test("denies the plan with Codex's blocking findings and points Claude to triage", () => {
   const t = setup();
   t.respondWith(revise(blockingFinding({ claim: "the plan skips migration" })));
@@ -13,15 +18,31 @@ test("denies the plan with Codex's blocking findings and points Claude to triage
   assert.equal(decision(result).permissionDecision, "deny");
   assert.match(decision(result).permissionDecisionReason, /the plan skips migration/);
   assert.match(decision(result).permissionDecisionReason, /codex-review/);
+  assert.equal(decision(result).updatedInput, undefined);
   assert.equal(t.state("plan").round, 1);
 });
 
 test("asks the user, never allows, when Codex finds no blocker, with the review and its findings as the reason", () => {
   const t = setup();
   t.respondWith(reviewJson({ summary: "Looks sound.", findings: [blockingFinding({ severity: "non-blocking", claim: "a cheaper option" })] }));
-  const result = decision(t.run("plan-review.ts", exitPlanMode("# The plan\n\nSteps.")));
+  const input = exitPlanMode("# The plan\n\nSteps.");
+  const run = t.run("plan-review.ts", { ...input, tool_input: { ...input.tool_input, other: "kept" } });
+  const result = decision(run);
   assert.equal(result.permissionDecision, "ask");
   assert.match(result.permissionDecisionReason, /approve\. Looks sound\.[\s\S]*a cheaper option/);
+  assert.ok(dialogPlan(run).startsWith("# The plan\n\nSteps."));
+  assert.match(dialogPlan(run), /## Codex review[\s\S]*approve\. Looks sound\.[\s\S]*a cheaper option/);
+  assert.equal(result.updatedInput.other, "kept");
+  assert.ok(dialogPlan(run).includes(t.state("plan").reviewToken!));
+});
+
+test("the review comes off the approved plan, and the user's dialog edits stay", () => {
+  const t = setup();
+  t.commitAll("init");
+  t.respondWith(reviewJson({ summary: "Looks sound." }));
+  const shown = dialogPlan(t.run("plan-review.ts", exitPlanMode("# The plan")));
+  t.run("plan-approved.ts", planApproved(`Edit above.\n\n${shown}\n\nEdit below.`));
+  assert.equal(t.state("code").plan, "Edit above.\n\n# The plan\n\nEdit below.");
 });
 
 test("a revised plan is reviewed with Codex's previous report, and the run ends when the user decides", () => {
@@ -43,6 +64,7 @@ test("hands the plan to the user at the round cap with the blockers still open",
   const result = t.run("plan-review.ts", exitPlanMode());
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /needs your decision[\s\S]*still unsafe/);
+  assert.match(dialogPlan(result), /needs your decision[\s\S]*still unsafe[\s\S]*Reject and ask Claude to continue[\s\S]*approve to accept/);
   assert.match(result.output.systemMessage, /needs your decision/);
   assert.equal(t.state("plan").round, 0);
 });
@@ -62,6 +84,7 @@ test("asks the user when the review failed, without counting a round", () => {
   const result = t.run("plan-review.ts", exitPlanMode(), { FAKE_CODEX_MODE: "exit-nonzero" });
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /NOT reviewed/);
+  assert.match(dialogPlan(result), /NOT reviewed/);
   assert.equal(t.state("plan").round, 0);
 });
 
@@ -71,6 +94,15 @@ test("asks the user when the hook itself fails", () => {
   assert.equal(result.status, 0);
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /not reviewed/);
+  assert.match(dialogPlan(result), /^# Plan[\s\S]*hook failed[\s\S]*not reviewed/);
+});
+
+test("the warning from a failed hook comes off the approved plan too", () => {
+  const t = setup();
+  t.commitAll("init");
+  const shown = dialogPlan(t.run("plan-review.ts", exitPlanMode("# The plan"), { CLAUDE_PLUGIN_OPTION_TIMEOUTSEC: "abc" }));
+  t.run("plan-approved.ts", planApproved(`${shown}\n\nEdit below.`));
+  assert.equal(t.state("code").plan, "# The plan\n\nEdit below.");
 });
 
 test("every outcome tells the user in one line what Codex did with the plan", () => {

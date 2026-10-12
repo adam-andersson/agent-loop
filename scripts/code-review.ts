@@ -4,6 +4,10 @@ import { snapshotTree } from "./lib/git.ts";
 import { codePrompt } from "./lib/prompts.ts";
 import { emit, hookContext, readHookInput } from "./lib/state.ts";
 
+// After the cap, the user may ask for more rounds while Claude only answers the findings, leaving
+// the tree unchanged. Claude ends that reply with this line to have the same tree reviewed again.
+const REVIEW_AGAIN = "Codex: review again";
+
 function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
@@ -16,7 +20,8 @@ function main() {
 
   const tree = snapshotTree(root);
   if (tree === code.base) return;
-  if (tree === code.lastTree) {
+  const reviewAgain = code.lastOutcome === "escalate" && input.last_assistant_message?.trimEnd().split("\n").at(-1) === REVIEW_AGAIN;
+  if (tree === code.lastTree && !reviewAgain) {
     // Claude stopped without changing anything since the last review: let it stop, and tell the
     // user what is still open rather than blocking on a condition that will not change.
     if (code.lastOutcome === "block" && code.lastReport) {
@@ -71,10 +76,14 @@ function main() {
     return;
   }
 
-  // At the cap the user decides. The base stays, so later rounds still cover the unresolved
-  // section; it moves on a pass or a new plan approval.
-  save("code", { ...reviewed, round, lastOutcome: "escalate" });
-  emit({ systemMessage: `${header}: needs your decision, ${plural(blocking.length, "blocking finding")} open. ${summary}\n${formatFindings(blocking)}` });
+  // At the cap the user decides, so nothing stays open unseen: block once for Claude to put the
+  // choice to the user. The round count resets, so more rounds start a fresh run; the base stays,
+  // so they still cover the unresolved section, and only a pass moves it.
+  save("code", { ...reviewed, round: 0, lastOutcome: "escalate" });
+  emit({
+    decision: "block",
+    reason: `${header}: needs the user's decision, ${plural(blocking.length, "blocking finding")} open after the round cap. ${summary}\n${formatFindings(blocking)}\nChange no code now. List each blocker with your triage, then ask the user whether to run more rounds or accept them as open, and stop. Follow the agent-loop:codex-review skill for either answer.`,
+  });
 }
 
 try {

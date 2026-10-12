@@ -153,7 +153,7 @@ test("lets the stop through with a notice when the hook itself fails", () => {
   assert.match(result.output.systemMessage, /not reviewed/);
 });
 
-test("at the round cap the stop is let through for the user to decide, and the base stays", () => {
+test("at the round cap the stop is blocked once for Claude to ask the user, and the base stays", () => {
   const t = approved({ config: { codeRounds: 2 } });
   t.respondWith(revise(), revise(blockingFinding({ claim: "still broken" })));
   const { base } = t.state("code");
@@ -161,22 +161,44 @@ test("at the round cap the stop is let through for the user to decide, and the b
   t.run("code-review.ts", stop());
   t.write("a.txt", "changed again\n");
   const { output } = t.run("code-review.ts", stop({ stop_hook_active: true }));
-  assert.equal(output.decision, undefined);
-  assert.match(output.systemMessage, /needs your decision[\s\S]*still broken/);
+  assert.equal(output.decision, "block");
+  assert.match(output.reason, /needs the user's decision[\s\S]*still broken[\s\S]*more rounds or accept/);
   assert.equal(t.state("code").base, base);
+  // The stop after Claude has asked the user goes through without another review.
+  assert.deepEqual(t.run("code-review.ts", stop({ stop_hook_active: true })).output, {});
+  assert.equal(t.codexCalls().length, 2);
 });
 
-test("after the cap an unrelated edit is still reviewed against the whole unresolved section, and never blocks", () => {
+test("more rounds after the cap: a changed tree starts a fresh run over the whole unresolved section", () => {
   const t = approved({ config: { codeRounds: 1 } });
   t.respondWith(revise(), revise());
   const { base } = t.state("code");
   t.write("a.txt", "changed\n");
   t.run("code-review.ts", stop());
+  t.run("code-review.ts", stop());
   t.write("unrelated.txt", "later edit\n");
   const { output } = t.run("code-review.ts", stop());
-  assert.equal(output.decision, undefined);
-  assert.match(output.systemMessage, /needs your decision/);
-  assert.equal(diffRange(t.codexCalls()[1].stdin)[0], base);
+  assert.equal(output.decision, "block");
+  const prompt = t.codexCalls()[1].stdin;
+  assert.match(prompt, /review round 1 of/);
+  assert.equal(diffRange(prompt)[0], base);
+});
+
+test("more rounds after the cap without edits: the review-again line reviews the unchanged tree with Claude's reply", () => {
+  const t = approved({ config: { codeRounds: 1 } });
+  t.respondWith(revise(blockingFinding({ claim: "the disputed bug" })), reviewJson());
+  t.write("a.txt", "changed\n");
+  t.run("code-review.ts", stop());
+  t.run("code-review.ts", stop({ last_assistant_message: "Do you want more rounds, or accept?" }));
+  const reply = "The disputed bug is not real: test/a.test.ts passes.";
+  assert.deepEqual(t.run("code-review.ts", stop({ last_assistant_message: reply })).output, {});
+  assert.equal(t.codexCalls().length, 1);
+  const { output } = t.run("code-review.ts", stop({ last_assistant_message: `${reply}\nCodex: review again` }));
+  assert.match(output.systemMessage, /pass/);
+  const prompt = t.codexCalls()[1].stdin;
+  assert.match(prompt, /review round 1 of/);
+  assert.match(prompt, /test\/a\.test\.ts passes/);
+  assert.match(prompt, /the disputed bug/);
 });
 
 test("a revised plan approved with unreviewed edits replaces the plan and keeps them in the section", () => {
@@ -208,15 +230,18 @@ test("a new plan approved after a pass starts from the passed tree", () => {
   assert.match(prompt, /# Plan B/);
 });
 
-test("a plan approved right after the round cap moves the base to the capped tree", () => {
+test("a plan approved after the round cap keeps the unresolved section in review", () => {
   const t = approved({ config: { codeRounds: 1 } });
-  t.respondWith(revise());
+  t.respondWith(revise(), revise());
+  const { base } = t.state("code");
   t.write("a.txt", "changed\n");
   t.run("code-review.ts", stop());
   t.run("plan-approved.ts", planApproved("# Plan B"));
-  assert.deepEqual(t.run("code-review.ts", stop()).output, {});
-  assert.equal(t.state("code").plan, "# Plan B");
-  assert.equal(t.codexCalls().length, 1);
+  assert.equal(t.state("code").base, base);
+  t.run("code-review.ts", stop());
+  const prompt = t.codexCalls()[1].stdin;
+  assert.equal(diffRange(prompt)[0], base);
+  assert.match(prompt, /# Plan B/);
 });
 
 test("edits made after the round cap stay in review when a plan is approved", () => {
@@ -224,12 +249,12 @@ test("edits made after the round cap stay in review when a plan is approved", ()
   t.respondWith(revise(), reviewJson());
   t.write("a.txt", "changed\n");
   t.run("code-review.ts", stop());
-  const capped = t.state("code").lastTree;
+  const { base } = t.state("code");
   t.write("a.txt", "changed after the cap\n");
   t.run("plan-approved.ts", planApproved("# Plan B"));
   t.run("code-review.ts", stop());
   assert.equal(t.codexCalls().length, 2);
-  assert.equal(diffRange(t.codexCalls()[1].stdin)[0], capped);
+  assert.equal(diffRange(t.codexCalls()[1].stdin)[0], base);
 });
 
 test("a revised plan approved after a block, with no edit, is reviewed afresh from the section base", () => {
