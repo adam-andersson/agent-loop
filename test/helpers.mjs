@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ledgerPaths, loadLedger, saveLedger } from "../scripts/lib/ledger.mjs";
+import { loadState, stateDir } from "../scripts/lib/state.mjs";
 
 export const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 const scriptsDir = path.join(pluginRoot, "scripts");
@@ -11,12 +11,9 @@ const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.u
 
 export function blockingFinding(overrides = {}) {
   return {
-    id: "1",
     severity: "blocking",
-    area: "src/a.ts:1",
     claim: "the bug",
     evidence: "src/a.ts:1 shows it",
-    confidence: "high",
     recommendation: "fix it",
     ...overrides,
   };
@@ -28,9 +25,12 @@ export function reviewJson(overrides = {}) {
     summary: "summary",
     files_inspected: ["src/a.ts"],
     findings: [],
-    resolutions: [],
     ...overrides,
   };
+}
+
+export function revise(...findings) {
+  return reviewJson({ verdict: "revise", findings: findings.length > 0 ? findings : [blockingFinding()] });
 }
 
 export function setup({ repo = true, config = {} } = {}) {
@@ -101,14 +101,9 @@ export function setup({ repo = true, config = {} } = {}) {
         return [];
       }
     },
-    paths() {
-      return ledgerPaths(home, context.sessionId, repo ? cwd : cwd);
-    },
-    ledger() {
-      return loadLedger(context.paths());
-    },
-    writeDispositions(entries) {
-      writeFileSync(context.paths().dispositions, JSON.stringify(entries));
+    // The state a loop keeps for the repository that dir belongs to.
+    state(loop, dir = cwd) {
+      return loadState(stateDir(context.sessionId, dir, { CODEX_REVIEW_HOME: home }), loop);
     },
     write(file, content) {
       writeFileSync(path.join(cwd, file), content);
@@ -127,25 +122,20 @@ export function setup({ repo = true, config = {} } = {}) {
       execFileSync("git", ["-C", cwd, "worktree", "add", "-q", "-b", name, worktree]);
       return worktree;
     },
-    seedLedger(key, ledger) {
-      saveLedger(ledgerPaths(home, context.sessionId, key), ledger);
-    },
   };
   return context;
 }
 
 const DEFAULT_PLAN = "# Plan\n\nAcceptance criteria: x. Coverage: unit + e2e.";
 
-// The PreToolUse and PostToolUse inputs of one ExitPlanMode call share its tool_use_id.
-export function exitPlanMode(plan = DEFAULT_PLAN, toolUseId = "toolu_plan") {
-  return { hook_event_name: "PreToolUse", tool_name: "ExitPlanMode", tool_use_id: toolUseId, tool_input: { plan } };
+export function exitPlanMode(plan = DEFAULT_PLAN) {
+  return { hook_event_name: "PreToolUse", tool_name: "ExitPlanMode", tool_input: { plan } };
 }
 
-export function planApproved(plan = DEFAULT_PLAN, toolUseId = "toolu_plan") {
+export function planApproved(plan = DEFAULT_PLAN) {
   return {
     hook_event_name: "PostToolUse",
     tool_name: "ExitPlanMode",
-    tool_use_id: toolUseId,
     tool_input: {},
     tool_response: { plan, isAgent: false, filePath: "/home/.claude/plans/plan.md" },
   };

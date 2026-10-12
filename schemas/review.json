@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["verdict", "summary", "files_inspected", "findings"],
+  "properties": {
+    "verdict": { "type": "string", "enum": ["approve", "revise"] },
+    "summary": { "type": "string" },
+    "files_inspected": { "type": "array", "items": { "type": "string" } },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "claim", "evidence", "recommendation"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["blocking", "non-blocking"] },
+          "claim": { "type": "string" },
+          "evidence": { "type": "string" },
+          "recommendation": { "type": "string" }
+        }
+      }
+    }
+  }
+}

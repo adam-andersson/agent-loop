@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { headCommit, headTree, repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.mjs";
+import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.mjs";
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
@@ -100,22 +100,6 @@ test("snapshotTree sees retargeting of a tracked, ignored, dangling symlink", ()
   rmSync(path.join(dir, "ignored.txt"));
   symlinkSync("missing-target-two", path.join(dir, "ignored.txt"));
   assert.notEqual(snapshotTree(dir), before);
-});
-
-test("headCommit is the HEAD commit and null before the first commit", () => {
-  const dir = tempRepo();
-  assert.equal(headCommit(dir), git(dir, "rev-parse", "HEAD"));
-  const empty = realpathSync(mkdtempSync(path.join(tmpdir(), "git-empty-")));
-  git(empty, "init", "-q");
-  assert.equal(headCommit(empty), null);
-});
-
-test("headTree is the committed tree and null before the first commit", () => {
-  const dir = tempRepo();
-  assert.equal(headTree(dir), git(dir, "rev-parse", "HEAD^{tree}"));
-  const empty = realpathSync(mkdtempSync(path.join(tmpdir(), "git-empty-")));
-  git(empty, "init", "-q");
-  assert.equal(headTree(empty), null);
 });
 
 test("snapshotTree leaves HEAD, the index and the working tree status untouched", () => {

@@ -1,40 +1,19 @@
 import { snapshotTree } from "./lib/git.mjs";
-import { saveLedger } from "./lib/ledger.mjs";
-import { acknowledgeHandOffs, hookContext, readHookInput } from "./lib/runtime.mjs";
+import { hookContext, readHookInput } from "./lib/state.mjs";
 
+// The one link between the loops: the approved plan, and the tree its first section starts from.
 const input = readHookInput();
-const { root, paths, ledger } = hookContext(input);
-
-// The user saw these findings in this call's dialog and approved anyway. A hand-off recorded for
-// another call (e.g. left behind by a retry whose hook failed) supersedes nothing.
-const handOff = ledger.plan.awaitingHuman;
-if (input.tool_use_id && handOff?.toolUseId === input.tool_use_id) {
-  for (const id of handOff.shownFindings ?? []) {
-    const finding = ledger.findings[id];
-    if (finding?.phase === "plan" && finding.status === "open") finding.status = "superseded";
-  }
-}
-
-ledger.plan.awaitingHuman = null;
-ledger.plan.rounds = 0;
-ledger.plan.approved = {
-  text: input.tool_response?.plan ?? input.tool_input?.plan ?? "",
-  at: new Date().toISOString(),
-};
-acknowledgeHandOffs(ledger);
-
+const { root, save } = hookContext(input);
+save("plan", { round: 0, lastReport: null });
 if (root) {
-  const tree = snapshotTree(root);
-  ledger.code = {
-    active: true,
-    cycleBase: tree,
-    lastTree: tree,
-    rounds: 0,
+  save("code", {
+    // tool_response carries the plan as approved, including edits made in the dialog.
+    plan: input.tool_response?.plan ?? input.tool_input?.plan ?? "",
+    base: snapshotTree(root),
+    round: 0,
+    lastTree: null,
     lastOutcome: null,
-    escalated: false,
-    escalatedAtHead: null,
-    stalled: false,
-  };
+    lastReport: null,
+    lastReportPath: null,
+  });
 }
-
-saveLedger(paths, ledger);

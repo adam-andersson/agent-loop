@@ -4,7 +4,7 @@
     "PreToolUse": [
       {
         "matcher": "ExitPlanMode",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-gate.mjs\"", "timeout": 1500 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.mjs\"", "timeout": 1500 }]
       }
     ],
     "PostToolUse": [
@@ -15,7 +15,7 @@
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/code-gate.mjs\"", "timeout": 1500 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.mjs\"", "timeout": 1500 }]
       }
     ]
   }
