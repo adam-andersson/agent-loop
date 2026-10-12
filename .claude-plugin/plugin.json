@@ -1,8 +1,41 @@
 {
   "name": "agent-loop",
-  "version": "0.1.0",
   "description": "Codex review gates around Claude Code's planning and implementation",
   "author": {
     "name": "Adam Andersson"
+  },
+  "userConfig": {
+    "model": {
+      "type": "string",
+      "title": "Codex model",
+      "description": "The model Codex reviews with.",
+      "default": "gpt-6.1-sol"
+    },
+    "effort": {
+      "type": "string",
+      "title": "Codex reasoning effort",
+      "description": "Codex's model_reasoning_effort, such as high. Leave empty for Codex's default."
+    },
+    "planRounds": {
+      "type": "number",
+      "title": "Plan review rounds",
+      "description": "Codex plan reviews before the user decides with blockers still open.",
+      "default": 3,
+      "min": 1
+    },
+    "codeRounds": {
+      "type": "number",
+      "title": "Code review rounds",
+      "description": "Codex code reviews of a section before the user decides with blockers still open.",
+      "default": 3,
+      "min": 1
+    },
+    "timeoutSec": {
+      "type": "number",
+      "title": "Codex timeout (seconds)",
+      "description": "How long one Codex review may run before it counts as not reviewed. Keep it under the hooks' 1500-second timeout.",
+      "default": 1200,
+      "min": 1
+    }
   }
 }

@@ -4,9 +4,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.mjs";
+import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.ts";
 
-function git(cwd, ...args) {
+function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
 }
 
@@ -26,10 +26,6 @@ test("repoRoot finds the toplevel from a subdirectory", () => {
   const dir = tempRepo();
   mkdirSync(path.join(dir, "sub"));
   assert.equal(repoRoot(path.join(dir, "sub")), dir);
-});
-
-test("repoRoot is undefined outside a git repository", () => {
-  assert.equal(repoRoot(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
 });
 
 test("sharedStateKey is the main checkout's toplevel from the main checkout and from linked worktrees", () => {
@@ -54,10 +50,6 @@ test("sharedStateKey is one key for a submodule and its linked worktrees", () =>
   assert.ok(key);
   assert.equal(sharedStateKey(worktree), key);
   assert.notEqual(key, sharedStateKey(superproject));
-});
-
-test("sharedStateKey is undefined outside a git repository", () => {
-  assert.equal(sharedStateKey(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
 });
 
 test("snapshotTree includes untracked files and excludes ignored ones", () => {

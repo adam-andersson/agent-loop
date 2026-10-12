@@ -4,9 +4,15 @@
   "type": "module",
   "description": "Codex review gates around Claude Code's planning and implementation",
   "scripts": {
-    "test": "node --test 'test/*.test.mjs'"
+    "typecheck": "tsc",
+    "test": "node --test 'test/*.test.ts'",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "typescript": "7.0.2"
   },
   "engines": {
-    "node": ">=24"
+    "node": ">=24.3.0"
   }
 }

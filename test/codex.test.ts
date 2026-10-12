@@ -4,12 +4,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCodex } from "../scripts/lib/codex.mjs";
+import { runCodex } from "../scripts/lib/codex.ts";
+import type { Config, Review } from "../scripts/lib/types.ts";
 
-const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
-const config = { model: "gpt-6.1-sol", timeoutSec: 5 };
+const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.ts", import.meta.url));
+const config: Config = { model: "gpt-6.1-sol", planRounds: 3, codeRounds: 3, timeoutSec: 5 };
 
-function validReview(overrides = {}) {
+function validReview(overrides: object = {}): Review {
   return {
     verdict: "approve",
     summary: "fine",
@@ -19,7 +20,9 @@ function validReview(overrides = {}) {
   };
 }
 
-function run({ mode = "ok", response = validReview(), configOverrides = {} } = {}) {
+type RunOptions = { mode?: string; response?: object | string; configOverrides?: Partial<Config> };
+
+function run({ mode = "ok", response = validReview(), configOverrides = {} }: RunOptions = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "codex-test-"));
   const responseFile = path.join(dir, "response.json");
   writeFileSync(responseFile, typeof response === "string" ? response : JSON.stringify(response));
@@ -28,7 +31,7 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} } = {
     ...process.env,
     CODEX_BIN: fakeCodex,
     FAKE_CODEX_MODE: mode,
-    FAKE_CODEX_RESPONSE: responseFile,
+    FAKE_CODEX_RESPONSES: responseFile,
     FAKE_CODEX_LOG: log,
   };
   const result = runCodex({
@@ -39,7 +42,7 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} } = {
     config: { ...config, ...configOverrides },
     env,
   });
-  let calls = [];
+  let calls: { args: string[]; stdin: string }[] = [];
   try {
     calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   } catch {
@@ -48,11 +51,12 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} } = {
   return { result, calls, dir };
 }
 
-test("returns the parsed review for a valid run", () => {
+test("returns the parsed review for a valid run, and keeps the raw output", () => {
   const finding = { severity: "blocking", claim: "c", evidence: "a.ts:1", recommendation: "r" };
   const { result } = run({ response: validReview({ verdict: "revise", findings: [finding] }) });
   assert.equal(result.status, "reviewed");
   assert.deepEqual(result.review.findings, [finding]);
+  assert.equal(JSON.parse(readFileSync(result.rawPath, "utf8")).verdict, "revise");
 });
 
 test("names the review schema, whose required fields are exactly what a valid run returns", () => {
@@ -62,32 +66,29 @@ test("names the review schema, whose required fields are exactly what a valid ru
   assert.deepEqual(schema.required.sort(), Object.keys(validReview()).sort());
 });
 
-test("passes the prompt on stdin and names model, sandbox and schema explicitly", () => {
+test("runs Codex read-only with the configured model, in the given directory, with the prompt on stdin", () => {
   const { calls, dir } = run();
   const [{ args, stdin }] = calls;
-  assert.equal(stdin, "review this");
-  assert.deepEqual(args.slice(0, 5), ["exec", "-s", "read-only", "-m", "gpt-6.1-sol"]);
-  assert.ok(args.includes("--output-schema"));
-  assert.equal(args[args.indexOf("-C") + 1], dir);
+  const valueOf = (flag: string) => args[args.indexOf(flag) + 1];
+  assert.equal(args[0], "exec");
+  assert.equal(valueOf("-s"), "read-only");
+  assert.equal(valueOf("-m"), "gpt-6.1-sol");
+  assert.equal(valueOf("-C"), dir);
   assert.equal(args.at(-1), "-");
+  assert.equal(stdin, "review this");
 });
 
 test("adds the reasoning effort only when configured", () => {
-  assert.ok(!run().calls[0].args.some((arg) => arg.startsWith("model_reasoning_effort")));
+  assert.ok(!run().calls[0].args.some((arg: string) => arg.startsWith("model_reasoning_effort")));
   const { calls } = run({ configOverrides: { effort: "high" } });
   assert.ok(calls[0].args.includes("model_reasoning_effort=high"));
-});
-
-test("keeps the raw output in the output directory", () => {
-  const { result } = run();
-  assert.equal(JSON.parse(readFileSync(result.rawPath, "utf8")).verdict, "approve");
 });
 
 for (const [mode, reason] of [
   ["exit-nonzero", /exit/i],
   ["empty", /empty/i],
   ["garbage", /json/i],
-]) {
+] as const) {
   test(`a ${mode} run is not reviewed`, () => {
     const { result } = run({ mode });
     assert.equal(result.status, "not-reviewed");
@@ -101,31 +102,17 @@ test("a run that exceeds the timeout is not reviewed", () => {
   assert.match(result.reason, /timed out/i);
 });
 
-test("a review that inspected no files is not reviewed", () => {
-  const { result } = run({ response: validReview({ files_inspected: [] }) });
-  assert.equal(result.status, "not-reviewed");
-  assert.match(result.reason, /no files/i);
-});
-
-test("a review missing required fields is not reviewed", () => {
-  const { result } = run({ response: { verdict: "approve" } });
-  assert.equal(result.status, "not-reviewed");
-});
-
-for (const [label, overrides] of [
-  ["a non-string inspected file", { files_inspected: [null] }],
-  ["a finding with only a severity", { findings: [{ severity: "blocking" }] }],
-  ["a finding with a non-string claim", { findings: [{ severity: "blocking", claim: 1, evidence: "e", recommendation: "r" }] }],
-]) {
+const finding = { severity: "blocking", claim: "c", evidence: "e", recommendation: "r" };
+for (const [label, response] of [
+  ["missing required fields", { verdict: "approve" }],
+  ["no inspected files", validReview({ files_inspected: [] })],
+  ["a non-string inspected file", validReview({ files_inspected: [null] })],
+  ["a finding with only a severity", validReview({ findings: [{ severity: "blocking" }] })],
+  ["a finding with a non-string claim", validReview({ findings: [{ ...finding, claim: 1 }] })],
+  ["a finding with an unknown severity", validReview({ findings: [{ ...finding, severity: "critical" }] })],
+] as [string, object][]) {
   test(`a review with ${label} is not reviewed`, () => {
-    const { result } = run({ response: validReview(overrides) });
+    const { result } = run({ response });
     assert.equal(result.status, "not-reviewed");
   });
 }
-
-test("a finding with an unknown severity is not reviewed", () => {
-  const { result } = run({
-    response: validReview({ findings: [{ severity: "critical", claim: "c", evidence: "e", recommendation: "r" }] }),
-  });
-  assert.equal(result.status, "not-reviewed");
-});

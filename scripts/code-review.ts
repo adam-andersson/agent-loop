@@ -1,15 +1,16 @@
-import { blockingFindings, formatFindings, runCodex } from "./lib/codex.mjs";
-import { snapshotTree } from "./lib/git.mjs";
-import { codePrompt } from "./lib/prompts.mjs";
-import { emit, hookContext, readHookInput } from "./lib/state.mjs";
+import { blockingFindings, formatFindings, runCodex } from "./lib/codex.ts";
+import { loadConfig } from "./lib/config.ts";
+import { snapshotTree } from "./lib/git.ts";
+import { codePrompt } from "./lib/prompts.ts";
+import { emit, hookContext, readHookInput } from "./lib/state.ts";
 
-function plural(count, noun) {
+function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? "" : "s"}`;
 }
 
 function main() {
   const input = readHookInput();
-  const { config, root, reviews, load, save } = hookContext(input);
+  const { root, reviews, load, save } = hookContext(input);
   const code = load("code");
   if (!code || !root) return;
 
@@ -18,13 +19,14 @@ function main() {
   if (tree === code.lastTree) {
     // Claude stopped without changing anything since the last review: let it stop, and tell the
     // user what is still open rather than blocking on a condition that will not change.
-    if (code.lastOutcome === "block") {
+    if (code.lastOutcome === "block" && code.lastReport) {
       const open = blockingFindings(code.lastReport).length;
       emit({ systemMessage: `Claude stopped with ${plural(open, "blocking Codex finding")} open; see its reply and ${code.lastReportPath}.` });
     }
     return;
   }
 
+  const config = loadConfig();
   const round = code.round + 1;
   const result = runCodex({
     prompt: codePrompt({
@@ -78,5 +80,5 @@ function main() {
 try {
   main();
 } catch (error) {
-  emit({ systemMessage: `Codex review hook failed (${error.message}); changes were not reviewed.` });
+  emit({ systemMessage: `Codex review hook failed (${(error as Error).message}); changes were not reviewed.` });
 }

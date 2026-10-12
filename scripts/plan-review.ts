@@ -1,10 +1,12 @@
-import { blockingFindings, formatFindings, runCodex } from "./lib/codex.mjs";
-import { planPrompt } from "./lib/prompts.mjs";
-import { emit, hookContext, readHookInput } from "./lib/state.mjs";
+import { blockingFindings, formatFindings, runCodex } from "./lib/codex.ts";
+import { loadConfig } from "./lib/config.ts";
+import { planPrompt } from "./lib/prompts.ts";
+import { emit, hookContext, readHookInput } from "./lib/state.ts";
+import type { PlanState } from "./lib/types.ts";
 
-const NEW_RUN = { round: 0, lastReport: null };
+const NEW_RUN: PlanState = { round: 0, lastReport: null };
 
-function respond(permissionDecision, reason, notice = reason.split("\n")[0]) {
+function respond(permissionDecision: "ask" | "deny", reason: string, notice = reason.split("\n")[0]): void {
   emit({
     systemMessage: notice,
     hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason: reason },
@@ -13,13 +15,14 @@ function respond(permissionDecision, reason, notice = reason.split("\n")[0]) {
 
 // "ask", never "allow": the user always makes the final call on a plan. The approval dialog
 // shows the reason under the plan.
-function askUser(reason) {
+function askUser(reason: string): void {
   respond("ask", reason);
 }
 
 function main() {
   const input = readHookInput();
-  const { config, root, reviews, load, save } = hookContext(input);
+  const config = loadConfig();
+  const { root, reviews, load, save } = hookContext(input);
   const state = load("plan") ?? NEW_RUN;
   const round = state.round + 1;
   const result = runCodex({
@@ -58,5 +61,5 @@ function main() {
 try {
   main();
 } catch (error) {
-  respond("ask", `Codex review hook failed (${error.message}); the plan was not reviewed.`);
+  respond("ask", `Codex review hook failed (${(error as Error).message}); the plan was not reviewed.`);
 }

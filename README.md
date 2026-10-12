@@ -54,22 +54,22 @@ Keep the Codex plugin's own stop review gate disabled. To try local changes with
 ln -s ~/dev/agent-loop/codex/AGENTS.md ~/.codex/AGENTS.md
 ```
 
-### Migrating from the symlinked hooks
-
-Remove the old install before installing the plugin, so each gate runs once:
-
-1. Delete the `plan-gate.mjs`, `plan-approved.mjs` and `code-gate.mjs` entries from `hooks` in `~/.claude/settings.json`.
-2. `rm ~/.claude/hooks/codex-review ~/.claude/skills/feature ~/.claude/skills/codex-review` (symlinks only).
-3. Rename skill references in your own instructions: `feature` is now `agent-loop:plan-feature` and `agent-loop:implement-plan`, and `codex-review` is `agent-loop:codex-review`.
-
 ## Configure
 
-`config.json` sets the Codex model, the optional reasoning `effort`, the round caps (`planRounds`, `codeRounds`) and the run timeout (`timeoutSec`).
+Set the options in `/plugin` → agent-loop → Configure options. Each one is read from the plugin's `userConfig`, and an unset option uses its default from `.claude-plugin/plugin.json`:
 
-## Test
+- `model`: the Codex model (`gpt-6.1-sol`).
+- `effort`: Codex's reasoning effort, unset by default.
+- `planRounds`, `codeRounds`: the round caps (3 each).
+- `timeoutSec`: the timeout for one Codex run (1200).
+
+## Develop
+
+The hooks are TypeScript that Node (≥ 24.3) runs directly by stripping types, so there is no build step; `tsc` only type-checks. The repository commits no lockfile: with a lockfile at the plugin root, Claude Code installs its dependencies on every plugin install.
 
 ```bash
-npm test
+npm install
+npm run check
 ```
 
-Codex is replaced by `test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.
+Codex is replaced by `test/fixtures/fake-codex.ts` through `CODEX_BIN`. `CLAUDE_PLUGIN_DATA` redirects state, and `CLAUDE_PLUGIN_OPTION_<KEY>` sets an option, as Claude Code does.

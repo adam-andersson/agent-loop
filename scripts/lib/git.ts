@@ -3,7 +3,7 @@ import { lstatSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-export function repoRoot(cwd) {
+export function repoRoot(cwd: string): string | undefined {
   try {
     return execFileSync("git", ["-C", cwd, "rev-parse", "--show-toplevel"], {
       encoding: "utf8",
@@ -17,7 +17,7 @@ export function repoRoot(cwd) {
 // One key for every worktree of a repository: git's own main-worktree path, the common dir
 // with a trailing /.git stripped. For a plain repo that is the main checkout's toplevel; for a
 // submodule it is <super>/.git/modules/<name>, which is fine since it is only a key.
-export function sharedStateKey(cwd) {
+export function sharedStateKey(cwd: string): string | undefined {
   try {
     const common = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
       encoding: "utf8",
@@ -30,7 +30,7 @@ export function sharedStateKey(cwd) {
   }
 }
 
-function entryExists(file) {
+function entryExists(file: string): boolean {
   try {
     lstatSync(file);
     return true;
@@ -39,7 +39,7 @@ function entryExists(file) {
   }
 }
 
-export function snapshotTree(root) {
+export function snapshotTree(root: string): string {
   const scratch = mkdtempSync(path.join(tmpdir(), "codex-review-index-"));
   const index = path.join(scratch, "index");
   const env = { ...process.env, GIT_INDEX_FILE: index };

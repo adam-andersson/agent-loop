@@ -21,7 +21,7 @@ if (counterFile) {
   }
   writeFileSync(counterFile, String(call + 1));
 }
-const responseFile = responses[Math.min(call, responses.length - 1)] ?? process.env.FAKE_CODEX_RESPONSE;
+const responseFile = responses[Math.min(call, responses.length - 1)];
 
 switch (mode) {
   case "exit-nonzero":
