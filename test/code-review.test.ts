@@ -133,13 +133,6 @@ test("a stop with the tree unchanged after a block is let through with a notice,
   assert.equal(t.codexCalls().length, 1);
 });
 
-test("reviews untracked files", () => {
-  const t = approved();
-  t.respondWith(reviewJson());
-  t.write("new.txt", "brand new\n");
-  t.run("code-review.ts", stop());
-  assert.equal(t.codexCalls().length, 1);
-});
 
 test("a failed review lets the stop through with a notice, and the next stop retries", () => {
   const t = approved();

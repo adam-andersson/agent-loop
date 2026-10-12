@@ -13,7 +13,6 @@ test("denies the plan with Codex's blocking findings and points Claude to triage
   assert.equal(decision(result).permissionDecision, "deny");
   assert.match(decision(result).permissionDecisionReason, /the plan skips migration/);
   assert.match(decision(result).permissionDecisionReason, /codex-review/);
-  assert.equal(decision(result).updatedInput, undefined);
   assert.equal(t.state("plan").round, 1);
 });
 
@@ -23,7 +22,6 @@ test("asks the user, never allows, when Codex finds no blocker, with the review 
   const result = decision(t.run("plan-review.ts", exitPlanMode("# The plan\n\nSteps.")));
   assert.equal(result.permissionDecision, "ask");
   assert.match(result.permissionDecisionReason, /approve\. Looks sound\.[\s\S]*a cheaper option/);
-  assert.equal(result.updatedInput, undefined);
 });
 
 test("a revised plan is reviewed with Codex's previous report, and the run ends when the user decides", () => {

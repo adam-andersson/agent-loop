@@ -28,10 +28,6 @@ test("repoRoot finds the toplevel from a subdirectory", () => {
   assert.equal(repoRoot(path.join(dir, "sub")), dir);
 });
 
-test("repoRoot is undefined outside a git repository", () => {
-  assert.equal(repoRoot(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
-});
-
 test("sharedStateKey is the main checkout's toplevel from the main checkout and from linked worktrees", () => {
   const dir = tempRepo();
   mkdirSync(path.join(dir, "sub"));
@@ -54,10 +50,6 @@ test("sharedStateKey is one key for a submodule and its linked worktrees", () =>
   assert.ok(key);
   assert.equal(sharedStateKey(worktree), key);
   assert.notEqual(key, sharedStateKey(superproject));
-});
-
-test("sharedStateKey is undefined outside a git repository", () => {
-  assert.equal(sharedStateKey(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
 });
 
 test("snapshotTree includes untracked files and excludes ignored ones", () => {

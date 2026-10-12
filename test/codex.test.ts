@@ -51,11 +51,12 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} }: Ru
   return { result, calls, dir };
 }
 
-test("returns the parsed review for a valid run", () => {
+test("returns the parsed review for a valid run, and keeps the raw output", () => {
   const finding = { severity: "blocking", claim: "c", evidence: "a.ts:1", recommendation: "r" };
   const { result } = run({ response: validReview({ verdict: "revise", findings: [finding] }) });
   assert.equal(result.status, "reviewed");
   assert.deepEqual(result.review.findings, [finding]);
+  assert.equal(JSON.parse(readFileSync(result.rawPath, "utf8")).verdict, "revise");
 });
 
 test("names the review schema, whose required fields are exactly what a valid run returns", () => {
@@ -65,25 +66,22 @@ test("names the review schema, whose required fields are exactly what a valid ru
   assert.deepEqual(schema.required.sort(), Object.keys(validReview()).sort());
 });
 
-test("passes the prompt on stdin and names model, sandbox and schema explicitly", () => {
+test("runs Codex read-only with the configured model, in the given directory, with the prompt on stdin", () => {
   const { calls, dir } = run();
   const [{ args, stdin }] = calls;
-  assert.equal(stdin, "review this");
-  assert.deepEqual(args.slice(0, 5), ["exec", "-s", "read-only", "-m", "gpt-6.1-sol"]);
-  assert.ok(args.includes("--output-schema"));
-  assert.equal(args[args.indexOf("-C") + 1], dir);
+  const valueOf = (flag: string) => args[args.indexOf(flag) + 1];
+  assert.equal(args[0], "exec");
+  assert.equal(valueOf("-s"), "read-only");
+  assert.equal(valueOf("-m"), "gpt-6.1-sol");
+  assert.equal(valueOf("-C"), dir);
   assert.equal(args.at(-1), "-");
+  assert.equal(stdin, "review this");
 });
 
 test("adds the reasoning effort only when configured", () => {
   assert.ok(!run().calls[0].args.some((arg: string) => arg.startsWith("model_reasoning_effort")));
   const { calls } = run({ configOverrides: { effort: "high" } });
   assert.ok(calls[0].args.includes("model_reasoning_effort=high"));
-});
-
-test("keeps the raw output in the output directory", () => {
-  const { result } = run();
-  assert.equal(JSON.parse(readFileSync(result.rawPath, "utf8")).verdict, "approve");
 });
 
 for (const [mode, reason] of [
@@ -104,31 +102,17 @@ test("a run that exceeds the timeout is not reviewed", () => {
   assert.match(result.reason, /timed out/i);
 });
 
-test("a review that inspected no files is not reviewed", () => {
-  const { result } = run({ response: validReview({ files_inspected: [] }) });
-  assert.equal(result.status, "not-reviewed");
-  assert.match(result.reason, /no files/i);
-});
-
-test("a review missing required fields is not reviewed", () => {
-  const { result } = run({ response: { verdict: "approve" } });
-  assert.equal(result.status, "not-reviewed");
-});
-
-for (const [label, overrides] of [
-  ["a non-string inspected file", { files_inspected: [null] }],
-  ["a finding with only a severity", { findings: [{ severity: "blocking" }] }],
-  ["a finding with a non-string claim", { findings: [{ severity: "blocking", claim: 1, evidence: "e", recommendation: "r" }] }],
+const finding = { severity: "blocking", claim: "c", evidence: "e", recommendation: "r" };
+for (const [label, response] of [
+  ["missing required fields", { verdict: "approve" }],
+  ["no inspected files", validReview({ files_inspected: [] })],
+  ["a non-string inspected file", validReview({ files_inspected: [null] })],
+  ["a finding with only a severity", validReview({ findings: [{ severity: "blocking" }] })],
+  ["a finding with a non-string claim", validReview({ findings: [{ ...finding, claim: 1 }] })],
+  ["a finding with an unknown severity", validReview({ findings: [{ ...finding, severity: "critical" }] })],
 ] as [string, object][]) {
   test(`a review with ${label} is not reviewed`, () => {
-    const { result } = run({ response: validReview(overrides) });
+    const { result } = run({ response });
     assert.equal(result.status, "not-reviewed");
   });
 }
-
-test("a finding with an unknown severity is not reviewed", () => {
-  const { result } = run({
-    response: validReview({ findings: [{ severity: "critical", claim: "c", evidence: "e", recommendation: "r" }] }),
-  });
-  assert.equal(result.status, "not-reviewed");
-});
