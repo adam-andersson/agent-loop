@@ -126,14 +126,18 @@ export function setup({ repo = true, config = {} } = {}) {
   return context;
 }
 
-export function exitPlanMode(plan = "# Plan\n\nAcceptance criteria: x. Coverage: unit + e2e.") {
-  return { hook_event_name: "PreToolUse", tool_name: "ExitPlanMode", tool_input: { plan } };
+const DEFAULT_PLAN = "# Plan\n\nAcceptance criteria: x. Coverage: unit + e2e.";
+
+// The PreToolUse and PostToolUse inputs of one ExitPlanMode call share its tool_use_id.
+export function exitPlanMode(plan = DEFAULT_PLAN, toolUseId = "toolu_plan") {
+  return { hook_event_name: "PreToolUse", tool_name: "ExitPlanMode", tool_use_id: toolUseId, tool_input: { plan } };
 }
 
-export function planApproved(plan = "# Plan\n\nAcceptance criteria: x. Coverage: unit + e2e.") {
+export function planApproved(plan = DEFAULT_PLAN, toolUseId = "toolu_plan") {
   return {
     hook_event_name: "PostToolUse",
     tool_name: "ExitPlanMode",
+    tool_use_id: toolUseId,
     tool_input: {},
     tool_response: { plan, isAgent: false, filePath: "/home/.claude/plans/plan.md" },
   };

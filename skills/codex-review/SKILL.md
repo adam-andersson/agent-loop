@@ -5,7 +5,7 @@ description: Triage Codex review findings returned by the plan or code review ho
 
 # Triage Codex findings
 
-The hook's message lists findings by id (`P1`… for the plan, `C1`… for code) and the path of `dispositions.json`. Codex sees your dispositions next round as claims it will verify; they never close a finding. Only Codex closes findings, in `ledger.json`, which you must never edit.
+The hook's message lists findings by id (`P1`… for the plan, `C1`… for code) and the path of `dispositions.json`. Codex sees your dispositions next round as claims it will verify; they never close a finding. Only Codex closes findings, in `ledger.json`, which you must never edit. The one exception: when the user approves a plan, the open plan findings shown in that approval dialog become `superseded`; code findings are never closed that way.
 
 ## For every finding
 

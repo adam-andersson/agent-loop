@@ -5,6 +5,16 @@ import { acknowledgeHandOffs, hookContext, readHookInput } from "./lib/runtime.m
 const input = readHookInput();
 const { root, paths, ledger } = hookContext(input);
 
+// The user saw these findings in this call's dialog and approved anyway. A hand-off recorded for
+// another call (e.g. left behind by a retry whose hook failed) supersedes nothing.
+const handOff = ledger.plan.awaitingHuman;
+if (input.tool_use_id && handOff?.toolUseId === input.tool_use_id) {
+  for (const id of handOff.shownFindings ?? []) {
+    const finding = ledger.findings[id];
+    if (finding?.phase === "plan" && finding.status === "open") finding.status = "superseded";
+  }
+}
+
 ledger.plan.awaitingHuman = null;
 ledger.plan.rounds = 0;
 ledger.plan.approved = {

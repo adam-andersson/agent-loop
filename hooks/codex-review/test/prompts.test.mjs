@@ -138,3 +138,38 @@ test("the code prompt carries the approved plan, or says none was recorded", () 
   assert.match(code(), /## The approved plan\n\n# The approved plan/);
   assert.match(code({ plan: undefined }), /no plan text recorded/);
 });
+
+test("the plan prompt adds a design review between the attack surface and the review method", () => {
+  const prompt = instructions(plan());
+  const at = prompt.indexOf("<design_review>");
+  assert.ok(at > prompt.indexOf("<attack_surface>") && at < prompt.indexOf("<review_method>"), "<design_review> is in order");
+  const block = prompt.slice(at, prompt.indexOf("</design_review>"));
+  assert.match(block, /core model/i);
+  assert.match(block, /two of something exist at once/i);
+  assert.match(block, /strongest alternative or simplification[^.]*cost/i);
+  assert.match(block, /sequencing/i);
+  assert.match(block, /non-blocking[^.]*concrete recommendation/i);
+  assert.match(block, /blocking findings deny ExitPlanMode/i);
+  assert.doesNotMatch(instructions(code()), /design_review|design finding/i);
+});
+
+test("a design finding fills the finding fields with the model's cost and the alternative", () => {
+  const prompt = instructions(plan());
+  const block = prompt.slice(prompt.indexOf("<design_review>"), prompt.indexOf("</design_review>"));
+  assert.match(block, /claim[^.]*what the current model costs/i);
+  assert.match(block, /recommendation[^.]*alternative[^.]*tradeoff/i);
+  const check = prompt.slice(prompt.indexOf("<final_check>"));
+  assert.match(check, /real failure scenario, or for a design finding, a concrete cost of the current model/);
+  assert.doesNotMatch(instructions(code()).slice(instructions(code()).indexOf("<final_check>")), /design finding/);
+});
+
+test("each phase states its own job in the role and its own summary", () => {
+  const planRole = plan().slice(0, plan().indexOf("</role>"));
+  const codeRole = code().slice(0, code().indexOf("</role>"));
+  assert.match(planRole, /break confidence in the plan where it is wrong, and make it better where it is merely weaker than it could be/);
+  assert.match(codeRole, /break confidence in the work, not to validate it/);
+  assert.doesNotMatch(codeRole, /make it better/);
+  assert.match(instructions(plan()), /summary: a terse go \/ no-go assessment, then the one change that would most improve the plan \(or "none"\)/);
+  assert.match(instructions(code()), /summary: a terse ship \/ no-ship assessment, not a neutral recap\./);
+  assert.doesNotMatch(instructions(code()), /most improve/);
+});

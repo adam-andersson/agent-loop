@@ -188,3 +188,109 @@ test("plan approval after the dialog clears the pending state", () => {
   t.run("plan-approved.mjs", planApproved());
   assert.equal(t.ledger().plan.awaitingHuman, null);
 });
+
+function nonBlockingFinding(overrides = {}) {
+  return blockingFinding({
+    severity: "non-blocking",
+    claim: "the model is weaker than it could be",
+    recommendation: "bind it to the call",
+    ...overrides,
+  });
+}
+
+test("the approval dialog lists an open non-blocking finding with its recommendation", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ findings: [nonBlockingFinding()] }));
+  const { updatedInput } = decision(t.run("plan-gate.mjs", exitPlanMode()));
+  assert.match(updatedInput.plan, /Open findings:\n- P1 \[non-blocking\] the model is weaker than it could be → bind it to the call/);
+  assert.doesNotMatch(updatedInput.plan, /Open non-blocking/);
+});
+
+test("approving a plan supersedes the findings its dialog showed, so the next plan carries none", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ findings: [nonBlockingFinding()] }), reviewJson());
+  t.run("plan-gate.mjs", exitPlanMode());
+  t.run("plan-approved.mjs", planApproved());
+  assert.equal(t.ledger().findings.P1.status, "superseded");
+  t.run("plan-gate.mjs", exitPlanMode("# Next plan", "toolu_next"));
+  assert.match(t.codexCalls()[1].stdin, /No findings are carried from earlier rounds\./);
+});
+
+test("approving an escalated plan supersedes the blocker the user overrode", () => {
+  const t = setup({ config: { planRounds: 2 } });
+  t.respondWith(
+    reviewJson({ verdict: "revise", findings: [blockingFinding()] }),
+    reviewJson({ verdict: "revise", resolutions: [{ id: "P1", status: "still-open", evidence: "e" }] }),
+    reviewJson()
+  );
+  t.run("plan-gate.mjs", exitPlanMode());
+  const escalated = decision(t.run("plan-gate.mjs", exitPlanMode("# v2")));
+  assert.match(escalated.permissionDecisionReason, /round cap/i);
+  t.run("plan-approved.mjs", planApproved("# v2"));
+  assert.equal(t.ledger().findings.P1.status, "superseded");
+  t.run("plan-gate.mjs", exitPlanMode("# Next plan", "toolu_next"));
+  assert.match(t.codexCalls()[2].stdin, /No findings are carried from earlier rounds\./);
+});
+
+test("a needs-human hand-off shows every open finding with its recommendation, and approval supersedes them all", () => {
+  const t = setup();
+  t.respondWith(
+    reviewJson({
+      verdict: "revise",
+      findings: [blockingFinding({ recommendation: "ask the user" }), blockingFinding({ id: "2", claim: "a second bug", recommendation: "fix the second" })],
+    })
+  );
+  t.run("plan-gate.mjs", exitPlanMode());
+  t.writeDispositions([
+    { id: "P1", disposition: "needs-human", evidence: "a design choice" },
+    { id: "P2", disposition: "accepted", evidence: "fixed in v2" },
+  ]);
+  const { updatedInput } = decision(t.run("plan-gate.mjs", exitPlanMode("# v2")));
+  assert.match(updatedInput.plan, /Recommendation: ask the user/);
+  assert.match(updatedInput.plan, /- P2 \[blocking\] a second bug → fix the second/);
+  assert.doesNotMatch(updatedInput.plan, /- P1 \[blocking\] the bug →/);
+  t.run("plan-approved.mjs", planApproved("# v2"));
+  assert.equal(t.ledger().findings.P1.status, "superseded");
+  assert.equal(t.ledger().findings.P2.status, "superseded");
+});
+
+test("a not-reviewed hand-off lists the open findings too", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }));
+  t.run("plan-gate.mjs", exitPlanMode());
+  const { updatedInput } = decision(t.run("plan-gate.mjs", exitPlanMode("# v2"), { FAKE_CODEX_MODE: "exit-nonzero" }));
+  assert.match(updatedInput.plan, /plan NOT reviewed[\s\S]*Open findings:\n- P1 \[blocking\] the bug → fix it/);
+});
+
+test("plan approval supersedes nothing without a hand-off for that very call", () => {
+  const cases = {
+    "no hand-off": (t) => t.run("plan-approved.mjs", planApproved()),
+    "no tool_use_id": (t) => {
+      t.run("plan-gate.mjs", exitPlanMode("# v2"), { FAKE_CODEX_MODE: "exit-nonzero" });
+      const input = planApproved("# v2");
+      delete input.tool_use_id;
+      t.run("plan-approved.mjs", input);
+    },
+    "another call's tool_use_id": (t) => {
+      t.run("plan-gate.mjs", exitPlanMode("# v2", "toolu_a"), { FAKE_CODEX_MODE: "exit-nonzero" });
+      t.run("plan-approved.mjs", planApproved("# v2", "toolu_b"));
+    },
+  };
+  for (const [name, approve] of Object.entries(cases)) {
+    const t = setup();
+    t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }));
+    t.run("plan-gate.mjs", exitPlanMode());
+    approve(t);
+    assert.equal(t.ledger().findings.P1.status, "open", name);
+  }
+});
+
+test("a stale hand-off left by a failed retry supersedes nothing", () => {
+  const t = setup();
+  t.respondWith(reviewJson({ findings: [nonBlockingFinding()] }));
+  assert.equal(decision(t.run("plan-gate.mjs", exitPlanMode("# v1", "toolu_a"))).permissionDecision, "ask");
+  const retry = t.run("plan-gate.mjs", exitPlanMode("# v2", "toolu_b"), { CODEX_REVIEW_CONFIG: "/nonexistent/config.json" });
+  assert.match(decision(retry).permissionDecisionReason, /hook failed/i);
+  t.run("plan-approved.mjs", planApproved("# v2", "toolu_b"));
+  assert.equal(t.ledger().findings.P1.status, "open");
+});

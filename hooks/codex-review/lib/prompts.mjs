@@ -1,11 +1,25 @@
 // Prompt structure adapted from the Codex plugin's adversarial review (prompts/adversarial-review.md):
 // XML-tagged instruction blocks, with the untrusted material last and never closed.
 
-const ROLE = `<role>
+function role(job) {
+  return `<role>
 You are Codex performing an adversarial review of work by another AI agent (Claude Opus).
-Your job is to break confidence in the work, not to validate it.
+Your job is to ${job}.
 You are read-only: do not edit anything.
 </role>`;
+}
+
+// Plan only: a plan is the cheapest point to change direction, so the review also asks for a
+// better model, as non-blocking findings that never hold up the gate on preference alone.
+const DESIGN_REVIEW = `<design_review>
+Beyond defects, review the plan's design:
+- Question its core model and assumptions: what it binds to what, what happens when two of something exist at once, what state outlives the change, and who else uses the code it touches.
+- Name the strongest alternative or simplification, if one exists, and say what it would cost.
+- Flag sequencing risks: a commit section that cannot end green, or work that is expensive to undo once started.
+A design finding fills the fields this way: claim says what the current model costs, evidence shows where that cost comes from, and recommendation names the concrete alternative and its tradeoff.
+Severity: a design finding is non-blocking with a concrete recommendation, unless following the plan as written would give a wrong or unsafe result; that case, like missing acceptance criteria or test coverage, stays blocking. Blocking findings deny ExitPlanMode, so a preference must never hold up the gate.
+The calibration rules apply here too: at most a few design findings, strongest first, none for their own sake.
+</design_review>`;
 
 const OPERATING_STANCE = `<operating_stance>
 Default to skepticism.
@@ -61,22 +75,22 @@ If the work holds up, say so directly and return no new findings.
 Never withhold a blocking finding to seem agreeable.
 </calibration_rules>`;
 
-function outputContract(subject) {
+function outputContract(summary) {
   return `<structured_output_contract>
 Return only JSON matching the provided schema.
-summary: a terse ${subject} assessment, not a neutral recap.
+summary: ${summary}
 files_inspected: every file you actually read.
 findings: new findings only, with fresh ids of your choice; refer to carried findings only through resolutions.
 verdict: approve only if no blocking finding remains open, counting carried ones; otherwise revise.
 </structured_output_contract>`;
 }
 
-function finalCheck(location) {
+function finalCheck(location, scenario) {
   return `<final_check>
 Before finalizing, check that each finding is:
 - material rather than stylistic
 - tied to ${location}
-- plausible under a real failure scenario
+- plausible under ${scenario}
 - actionable for the engineer fixing it
 </final_check>`;
 }
@@ -96,8 +110,8 @@ function carriedSection(carried, dispositions) {
   return `Carried findings. Give a resolution for every one of these ids:\n${lines.join("\n")}`;
 }
 
-function adversarialPrompt({ task, attackSurface, subject, location, carried, dispositions, material }) {
-  return `${ROLE}
+function adversarialPrompt({ job, task, attackSurface, designReview, summary, location, scenario, carried, dispositions, material }) {
+  return `${role(job)}
 
 <task>
 ${task}
@@ -109,7 +123,7 @@ ${OPERATING_STANCE}
 ${attackSurface}
 </attack_surface>
 
-${REVIEW_METHOD}
+${designReview ? `${designReview}\n\n` : ""}${REVIEW_METHOD}
 
 ${CARRIED_FINDINGS_RULES}
 
@@ -119,9 +133,9 @@ ${GROUNDING_RULES}
 
 ${CALIBRATION_RULES}
 
-${outputContract(subject)}
+${outputContract(summary)}
 
-${finalCheck(location)}
+${finalCheck(location, scenario)}
 
 ${UNTRUSTED_MATERIAL}
 
@@ -135,6 +149,7 @@ ${material}
 
 export function planPrompt({ plan, carried, dispositions, round, cap }) {
   return adversarialPrompt({
+    job: "break confidence in the plan where it is wrong, and make it better where it is merely weaker than it could be",
     task: `Review an implementation PLAN written by Claude Opus before any code exists (review round ${round} of at most ${cap}).
 Find the strongest reasons it should not be approved yet: it would fail, produce a wrong result, or be worse than a simpler alternative.
 The current directory is the repository the plan is for. Verify the plan's claims about the codebase by reading the code.`,
@@ -148,8 +163,10 @@ The current directory is the repository the plan is for. Verify the plan's claim
 - missing handling of failure, empty state, migration, or rollback
 - a simpler approach, or an existing function or utility, the plan ignores
 - scope that does not match the stated goal`,
-    subject: "go / no-go",
+    designReview: DESIGN_REVIEW,
+    summary: 'a terse go / no-go assessment, then the one change that would most improve the plan (or "none").',
     location: "a concrete plan section and, where it applies, the file:line it contradicts",
+    scenario: "a real failure scenario, or for a design finding, a concrete cost of the current model",
     carried,
     dispositions,
     material: `## The plan
@@ -164,6 +181,7 @@ export function codePrompt({ plan, cycleBase, lastTree, tree, carried, dispositi
       ? `Changed since your previous round (focus here first, but the whole cycle is under review): \`git diff ${lastTree} ${tree}\``
       : "This is the first round of this review cycle.";
   return adversarialPrompt({
+    job: "break confidence in the work, not to validate it",
     task: `Review a CODE CHANGE written by Claude Opus against the plan the user approved (review round ${round} of at most ${cap}).
 Find the strongest reasons it should not ship yet.
 The current directory is the repository. The change under review is everything in \`git diff ${cycleBase} ${tree}\` (git tree objects: the snapshot when the cycle started, and the working tree now, including untracked files). Read surrounding code as needed.
@@ -179,8 +197,9 @@ ${sinceLastRound}`,
 - divergence from the approved plan or its acceptance criteria
 - violations of the repository's instructions (AGENTS.md and any docs it points to)
 - tests that are missing, mock the unit under test, or cannot fail`,
-    subject: "ship / no-ship",
+    summary: "a terse ship / no-ship assessment, not a neutral recap.",
     location: "a concrete file:line in the change or the code it affects",
+    scenario: "a real failure scenario",
     carried,
     dispositions,
     material: `## The approved plan
