@@ -4,7 +4,7 @@
     "PreToolUse": [
       {
         "matcher": "ExitPlanMode",
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.ts\"", "timeout": 1500 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.ts\"", "timeout": 1500, "statusMessage": "Codex is reviewing the plan…" }]
       }
     ],
     "PostToolUse": [
@@ -15,7 +15,7 @@
     ],
     "Stop": [
       {
-        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.ts\"", "timeout": 1500 }]
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.ts\"", "timeout": 1500, "statusMessage": "Codex is reviewing the changes…" }]
       }
     ]
   }

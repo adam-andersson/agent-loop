@@ -10,18 +10,20 @@ Claude calls ExitPlanMode ──► Codex reviews the plan
    └────────────────────────────┘ otherwise → the approval dialog, with the review: the user decides
 ```
 
+The dialog renders only the plan, so the review is appended to the plan it shows, and taken off again, by a per-review token, before the approved plan is recorded. At the cap, rejecting and asking Claude to continue starts a new review run.
+
 ## Code loop
 
 ```
 User approves the plan ──► records the plan and the tree as the section base
 Claude stops with changes ──► Codex reviews the whole section (base..now) against the plan
    ▲                            │ blocking findings, under the round cap → block: Claude triages, fixes, stops again
-   └────────────────────────────┘ pass → notice, the base moves on; cap reached → notice, the user decides
+   └────────────────────────────┘ pass → notice, the base moves on; cap reached → block once: Claude asks the user for more rounds or accept
 ```
 
-Each round is a fresh review of the current plan or section, with Codex's previous report and Claude's reply as context, so a blocker Codex no longer reports is fixed. At the round cap the code loop keeps the section base, so later rounds still cover the unresolved section until a pass. A stop with nothing changed since a block goes through with a notice; Claude Code's own cap on consecutive Stop blocks is the outer guard.
+Each round is a fresh review of the current plan or section, with Codex's previous report and Claude's reply as context, so a blocker Codex no longer reports is fixed. At the round cap the code loop keeps the section base and resets the round count, so more rounds start a fresh run that still covers the unresolved section until a pass; a reply that ends with `Codex: review again` has an unchanged tree reviewed again. A stop with nothing changed since a block goes through with a notice; Claude Code's own cap on consecutive Stop blocks is the outer guard.
 
-A follow-up that changes behaviour revises the approved plan through `ExitPlanMode`, so Codex reviews the full revised plan and the code review checks against it. Approving a revised or new plan replaces the plan and keeps the section base, so edits not yet reviewed stay in review; after the round cap, approval accepts the capped review and moves the base to the tree it covered.
+A follow-up that changes behaviour revises the approved plan through `ExitPlanMode`, so Codex reviews the full revised plan and the code review checks against it. Approving a revised or new plan replaces the plan and keeps the section base, so edits not yet reviewed stay in review; only a pass moves the base, so approval after the round cap does not accept the open blockers.
 
 ## Design choices
 
