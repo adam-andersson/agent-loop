@@ -64,7 +64,7 @@ function main() {
     save("code", { ...reviewed, round, lastOutcome: "block" });
     emit({
       decision: "block",
-      reason: `${header}: revise. ${summary}\n${formatFindings(findings)}\nTriage each finding with the codex-review skill: fix what holds up, answer the rest with evidence in your reply, then stop again. The next round reviews the whole section.`,
+      reason: `${header}: revise. ${summary}\n${formatFindings(findings)}\nTriage each finding with the agent-loop:codex-review skill: fix what holds up, answer the rest with evidence in your reply, then stop again. The next round reviews the whole section.`,
     });
     return;
   }

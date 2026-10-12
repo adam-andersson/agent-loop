@@ -44,7 +44,7 @@ function main() {
     save("plan", { round, lastReport: result.review });
     respond(
       "deny",
-      `${header}: revise. ${summary}\n${formatFindings(findings)}\nTriage each finding with the codex-review skill, revise the plan, and call ExitPlanMode again.`,
+      `${header}: revise. ${summary}\n${formatFindings(findings)}\nTriage each finding with the agent-loop:codex-review skill, revise the plan, and call ExitPlanMode again.`,
       { notice: `${header}: revise, ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"} sent back to Claude.` }
     );
     return;
