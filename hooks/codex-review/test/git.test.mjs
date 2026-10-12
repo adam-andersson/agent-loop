@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { headCommit, headTree, repoRoot, snapshotTree } from "../lib/git.mjs";
+import { headCommit, headTree, repoRoot, sharedStateKey, snapshotTree } from "../lib/git.mjs";
 
 function git(cwd, ...args) {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
@@ -30,6 +30,34 @@ test("repoRoot finds the toplevel from a subdirectory", () => {
 
 test("repoRoot is undefined outside a git repository", () => {
   assert.equal(repoRoot(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
+});
+
+test("sharedStateKey is the main checkout's toplevel from the main checkout and from linked worktrees", () => {
+  const dir = tempRepo();
+  mkdirSync(path.join(dir, "sub"));
+  const worktree = path.join(realpathSync(mkdtempSync(path.join(tmpdir(), "git-worktree-"))), "wt");
+  git(dir, "worktree", "add", "-q", "-b", "wt", worktree);
+  mkdirSync(path.join(worktree, "nested"));
+  for (const cwd of [dir, path.join(dir, "sub"), worktree, path.join(worktree, "nested")]) {
+    assert.equal(sharedStateKey(cwd), dir, cwd);
+  }
+});
+
+test("sharedStateKey is one key for a submodule and its linked worktrees", () => {
+  const upstream = tempRepo();
+  const superproject = tempRepo();
+  git(superproject, "-c", "protocol.file.allow=always", "submodule", "add", "-q", upstream, "mod");
+  const submodule = path.join(superproject, "mod");
+  const worktree = path.join(realpathSync(mkdtempSync(path.join(tmpdir(), "git-worktree-"))), "wt");
+  git(submodule, "worktree", "add", "-q", "-b", "wt", worktree);
+  const key = sharedStateKey(submodule);
+  assert.ok(key);
+  assert.equal(sharedStateKey(worktree), key);
+  assert.notEqual(key, sharedStateKey(superproject));
+});
+
+test("sharedStateKey is undefined outside a git repository", () => {
+  assert.equal(sharedStateKey(realpathSync(mkdtempSync(path.join(tmpdir(), "no-git-")))), undefined);
 });
 
 test("snapshotTree includes untracked files and excludes ignored ones", () => {

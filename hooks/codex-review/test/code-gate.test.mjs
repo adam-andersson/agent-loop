@@ -1,5 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { writeFileSync } from "node:fs";
+import path from "node:path";
+import { headCommit, snapshotTree } from "../lib/git.mjs";
+import { emptyLedger } from "../lib/ledger.mjs";
 import { blockingFinding, planApproved, reviewJson, setup, stop } from "./helpers.mjs";
 
 function approved(options) {
@@ -371,4 +376,133 @@ test("lets the stop through with a notice when the hook itself fails", () => {
   const result = t.run("code-gate.mjs", stop(), { CODEX_REVIEW_CONFIG: "/nonexistent/config.json" });
   assert.equal(result.status, 0);
   assert.match(result.output.systemMessage, /hook failed/i);
+});
+
+function committed(options) {
+  const t = setup(options);
+  t.commitAll("init");
+  return t;
+}
+
+function activeLedger(root, code = {}) {
+  const tree = snapshotTree(root);
+  return {
+    ...emptyLedger(),
+    plan: { rounds: 0, awaitingHuman: null, approved: { text: "# Seeded plan", at: "2026-01-01T00:00:00.000Z" } },
+    code: {
+      active: true,
+      cycleBase: tree,
+      lastTree: tree,
+      rounds: 0,
+      lastOutcome: null,
+      escalated: false,
+      escalatedAtHead: null,
+      stalled: false,
+      ...code,
+    },
+  };
+}
+
+test("a plan approved in the main checkout gates a stop in a linked worktree", () => {
+  const t = committed();
+  t.run("plan-approved.mjs", planApproved("# The approved plan"));
+  const { cycleBase } = t.ledger().code;
+  const worktree = t.addWorktree("wt");
+  writeFileSync(path.join(worktree, "a.txt"), "changed in the worktree\n");
+  t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }));
+  const { output } = t.run("code-gate.mjs", { ...stop(), cwd: worktree });
+  assert.equal(output.decision, "block");
+  assert.equal(t.codexCalls().length, 1);
+  assert.match(t.codexCalls()[0].stdin, new RegExp(`git diff ${cycleBase} \\w{40}`));
+});
+
+test("a plan approved in a linked worktree gates a stop in the main checkout", () => {
+  const t = committed();
+  const worktree = t.addWorktree("wt");
+  t.run("plan-approved.mjs", { ...planApproved(), cwd: worktree });
+  t.write("a.txt", "changed in the main checkout\n");
+  t.respondWith(reviewJson());
+  t.run("code-gate.mjs", stop());
+  assert.equal(t.codexCalls().length, 1);
+});
+
+test("a ledger stored under a submodule's own toplevel still gates a stop there", () => {
+  const t = committed();
+  const upstream = path.join(t.base, "upstream");
+  execFileSync("git", ["init", "-q", "-b", "main", upstream]);
+  writeFileSync(path.join(upstream, "s.txt"), "one\n");
+  t.commitAll("upstream", upstream);
+  execFileSync("git", ["-C", t.cwd, "-c", "protocol.file.allow=always", "submodule", "add", "-q", upstream, "sub"]);
+  const submodule = path.join(t.cwd, "sub");
+  t.seedLedger(submodule, activeLedger(submodule));
+  writeFileSync(path.join(submodule, "s.txt"), "changed\n");
+  t.respondWith(reviewJson());
+  t.run("code-gate.mjs", { ...stop(), cwd: submodule });
+  assert.equal(t.codexCalls().length, 1);
+});
+
+test("a ledger stored under a separate-git-dir checkout's toplevel still gates a stop there", () => {
+  const t = setup({ repo: false });
+  const checkout = path.join(t.base, "checkout");
+  execFileSync("git", ["init", "-q", "-b", "main", "--separate-git-dir", path.join(t.base, "gitdir"), checkout]);
+  writeFileSync(path.join(checkout, "a.txt"), "one\n");
+  t.commitAll("init", checkout);
+  t.seedLedger(checkout, activeLedger(checkout));
+  writeFileSync(path.join(checkout, "a.txt"), "changed\n");
+  t.respondWith(reviewJson());
+  t.run("code-gate.mjs", { ...stop(), cwd: checkout });
+  assert.equal(t.codexCalls().length, 1);
+});
+
+test("an escalation in the main checkout stays paused across a worktree switch until the user commits there", () => {
+  const t = committed({ config: { codeRounds: 1 } });
+  t.run("plan-approved.mjs", planApproved());
+  const worktree = t.addWorktree("wt");
+  t.commitEmpty("ahead in the worktree", worktree);
+  t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }), reviewJson({ resolutions: [{ id: "C1", status: "resolved", evidence: "fixed" }] }));
+  t.write("a.txt", "changed\n");
+  assert.match(t.run("code-gate.mjs", stop()).output.systemMessage, /round cap/i);
+  assert.deepEqual(t.run("code-gate.mjs", { ...stop(), cwd: worktree }).output, {});
+  assert.equal(t.ledger().code.escalated, true);
+  assert.equal(t.codexCalls().length, 1);
+  t.commitAll("user commit");
+  t.run("code-gate.mjs", { ...stop(), cwd: worktree });
+  assert.equal(t.ledger().code.escalated, false);
+  assert.equal(t.codexCalls().length, 2);
+});
+
+test("an escalation recorded before escalatedRoot existed stays paused across a worktree switch", () => {
+  const t = committed();
+  const worktree = t.addWorktree("wt");
+  t.commitEmpty("ahead in the worktree", worktree);
+  t.seedLedger(t.cwd, {
+    ...activeLedger(t.cwd, { escalated: true, escalatedAtHead: headCommit(t.cwd) }),
+    handedOff: ["C1:pending"],
+    acknowledged: [],
+  });
+  assert.deepEqual(t.run("code-gate.mjs", { ...stop(), cwd: worktree }).output, {});
+  assert.equal(t.ledger().code.escalated, true);
+  assert.deepEqual(t.ledger().acknowledged, []);
+  t.commitEmpty("user commit");
+  t.write("a.txt", "next change\n");
+  t.respondWith(reviewJson());
+  t.run("code-gate.mjs", stop());
+  assert.equal(t.ledger().code.escalated, false);
+  assert.equal(t.codexCalls().length, 1);
+});
+
+test("an escalation from a removed worktree resumes against the current checkout", () => {
+  const t = committed({ config: { codeRounds: 1 } });
+  const worktree = t.addWorktree("wt");
+  t.run("plan-approved.mjs", { ...planApproved(), cwd: worktree });
+  t.respondWith(reviewJson({ verdict: "revise", findings: [blockingFinding()] }), reviewJson({ resolutions: [{ id: "C1", status: "resolved", evidence: "fixed" }] }));
+  writeFileSync(path.join(worktree, "a.txt"), "changed\n");
+  assert.match(t.run("code-gate.mjs", { ...stop(), cwd: worktree }).output.systemMessage, /round cap/i);
+  execFileSync("git", ["-C", t.cwd, "worktree", "remove", "--force", worktree]);
+  t.write("a.txt", "changed in the main checkout\n");
+  t.run("code-gate.mjs", stop());
+  const { code } = t.ledger();
+  assert.equal(code.escalated, false);
+  assert.match(code.cycleBase, /^[0-9a-f]{40}$/);
+  assert.equal(t.codexCalls().length, 2);
 });

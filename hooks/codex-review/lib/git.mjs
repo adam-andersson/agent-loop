@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { lstatSync, mkdtempSync, rmSync } from "node:fs";
+import { lstatSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -9,6 +9,22 @@ export function repoRoot(cwd) {
       encoding: "utf8",
       stdio: ["ignore", "pipe", "ignore"],
     }).trim();
+  } catch {
+    return undefined;
+  }
+}
+
+// One key for every worktree of a repository: git's own main-worktree path, the common dir
+// with a trailing /.git stripped. For a plain repo that is the main checkout's toplevel; for a
+// submodule it is <super>/.git/modules/<name>, which is fine since it is only a key.
+export function sharedStateKey(cwd) {
+  try {
+    const common = execFileSync("git", ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const real = realpathSync(common);
+    return path.basename(real) === ".git" ? path.dirname(real) : real;
   } catch {
     return undefined;
   }
