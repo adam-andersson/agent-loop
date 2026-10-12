@@ -27,11 +27,26 @@ function respond(
   });
 }
 
-function askUser(context, input, plan, reason) {
-  context.ledger.plan.awaitingHuman = { planHash: createHash("sha256").update(plan).digest("hex") };
+// Every hand-off shows the user all open plan findings: those the reason already formats in
+// full, and the rest as one line each. Approving this call (plan-approved.mjs) supersedes them.
+function askUser(context, input, plan, reason, formatted = []) {
+  const open = openFindings(context.ledger, "plan");
+  const inReason = new Set(formatted.map((finding) => finding.id));
+  const listed = open.filter((finding) => !inReason.has(finding.id));
+  const dialog =
+    listed.length > 0
+      ? `${reason}\nOpen findings:\n${listed
+          .map((finding) => `- ${finding.id} [${finding.severity}] ${finding.claim} → ${finding.recommendation}`)
+          .join("\n")}`
+      : reason;
+  context.ledger.plan.awaitingHuman = {
+    planHash: createHash("sha256").update(plan).digest("hex"),
+    toolUseId: input.tool_use_id ?? null,
+    shownFindings: open.map((finding) => finding.id),
+  };
   saveLedger(context.paths, context.ledger);
-  respond("ask", reason, {
-    updatedInput: { ...input.tool_input, plan: `${plan}\n\n---\n\n## Codex review\n\n${reason}\n` },
+  respond("ask", dialog, {
+    updatedInput: { ...input.tool_input, plan: `${plan}\n\n---\n\n## Codex review\n\n${dialog}\n` },
   });
 }
 
@@ -57,7 +72,8 @@ function main() {
       plan,
       `Codex review paused: Opus marked ${waiting.map((finding) => finding.id).join(", ")} needs-human.\n${waiting
         .map((finding) => `${formatFinding(finding)}\n  Opus: ${dispositions[finding.id].evidence}`)
-        .join("\n")}`
+        .join("\n")}`,
+      waiting
     );
     return;
   }
@@ -119,21 +135,12 @@ function main() {
       context,
       input,
       plan,
-      `${header}: needs your decision (${decision.reasons.join("; ")}).\n${decision.openBlocking.map(formatFinding).join("\n")}`
+      `${header}: needs your decision (${decision.reasons.join("; ")}).\n${decision.openBlocking.map(formatFinding).join("\n")}`,
+      decision.openBlocking
     );
     return;
   }
-  const nonBlocking = openFindings(ledger, "plan");
-  askUser(
-    context,
-    input,
-    plan,
-    `${header}: approve. ${result.review.summary}${
-      nonBlocking.length > 0
-        ? `\nOpen non-blocking: ${nonBlocking.map((finding) => `${finding.id} ${finding.claim}`).join("; ")}`
-        : ""
-    }`
-  );
+  askUser(context, input, plan, `${header}: approve. ${result.review.summary}`);
 }
 
 try {
