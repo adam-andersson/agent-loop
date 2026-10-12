@@ -1,0 +1,16 @@
+{
+  "name": "agent-loop",
+  "owner": {
+    "name": "Adam Andersson"
+  },
+  "metadata": {
+    "description": "Codex review gates around Claude Code's planning and implementation"
+  },
+  "plugins": [
+    {
+      "name": "agent-loop",
+      "description": "Codex review gates around Claude Code's planning and implementation",
+      "source": "./"
+    }
+  ]
+}

@@ -3,9 +3,9 @@ import { mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const SCHEMA_PATH = fileURLToPath(new URL("../schema.json", import.meta.url));
-const SEVERITIES = new Set(["blocking", "non-blocking", "nit"]);
-const RESOLUTION_STATUSES = new Set(["resolved", "still-open", "withdrawn"]);
+const SCHEMA_PATH = fileURLToPath(new URL("../../schemas/review.json", import.meta.url));
+const SEVERITIES = new Set(["blocking", "non-blocking"]);
+const FINDING_TEXT = ["claim", "evidence", "recommendation"];
 
 export function runCodex({ prompt, cwd, outputDir, label, config, env = process.env }) {
   mkdirSync(outputDir, { recursive: true });
@@ -52,17 +52,26 @@ function notReviewed(reason, rawPath) {
 
 function shapeProblem(review) {
   if (!["approve", "revise"].includes(review?.verdict)) return "review has no valid verdict";
-  if (!Array.isArray(review.findings) || !Array.isArray(review.resolutions)) {
-    return "review is missing findings or resolutions";
-  }
+  if (typeof review.summary !== "string" || !Array.isArray(review.findings)) return "review is missing its summary or findings";
   if (!Array.isArray(review.files_inspected) || review.files_inspected.length === 0) {
     return "review inspected no files";
   }
+  if (review.files_inspected.some((file) => typeof file !== "string")) return "review lists a file that is not a path";
   if (review.findings.some((finding) => !SEVERITIES.has(finding?.severity))) {
     return "review has a finding with an unknown severity";
   }
-  if (review.resolutions.some((resolution) => !RESOLUTION_STATUSES.has(resolution?.status))) {
-    return "review has a resolution with an unknown status";
+  if (review.findings.some((finding) => FINDING_TEXT.some((field) => typeof finding[field] !== "string"))) {
+    return "review has a finding without its claim, evidence or recommendation";
   }
   return undefined;
+}
+
+export function blockingFindings(review) {
+  return review.findings.filter((finding) => finding.severity === "blocking");
+}
+
+export function formatFindings(findings) {
+  return findings
+    .map((finding) => `- [${finding.severity}] ${finding.claim}\n  Evidence: ${finding.evidence}\n  Recommendation: ${finding.recommendation}`)
+    .join("\n");
 }

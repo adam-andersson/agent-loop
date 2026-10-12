@@ -1,0 +1,8 @@
+{
+  "name": "agent-loop",
+  "version": "0.1.0",
+  "description": "Codex review gates around Claude Code's planning and implementation",
+  "author": {
+    "name": "Adam Andersson"
+  }
+}

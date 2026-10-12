@@ -1,0 +1,22 @@
+{
+  "description": "Codex reviews the plan at ExitPlanMode and the approved plan's code at Stop.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-review.mjs\"", "timeout": 1500 }]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/plan-approved.mjs\"" }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/code-review.mjs\"", "timeout": 1500 }]
+      }
+    ]
+  }
+}

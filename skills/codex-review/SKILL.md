@@ -1,27 +1,26 @@
 ---
 name: codex-review
-description: Triage Codex review findings returned by the plan or code review hooks — verify each finding, record a disposition, fix accepted ones test-first. Use whenever an ExitPlanMode denial or a Stop block carries Codex findings, or when the user asks how a Codex review was handled.
+description: Triage Codex review findings from the plan or code review hooks. Use when an ExitPlanMode denial or a Stop block carries Codex findings, or when the user asks how a Codex review was handled.
 ---
 
 # Triage Codex findings
 
-The hook's message lists findings by id (`P1`… for the plan, `C1`… for code) and the path of `dispositions.json`. Codex sees your dispositions next round as claims it will verify; they never close a finding. Only Codex closes findings, in `ledger.json`, which you must never edit. The one exception: when the user approves a plan, the open plan findings shown in that approval dialog become `superseded`; code findings are never closed that way.
+The hook's message lists Codex's findings, each with a severity, claim, evidence and recommendation. The next round is a fresh Codex review of the whole plan or section, with its previous report and your reply as context. A blocking finding is gone only when Codex no longer reports it.
 
 ## For every finding
 
-1. **Verify before deciding.** Reproduce layout or behaviour claims with a throwaway probe test; check code claims by reading the code and running what you can. Many review findings are false positives from reading code alone.
-2. **Decide one disposition:**
-   - `accepted` — it is real. Evidence: what you verified and what you changed.
-   - `rejected` — it is wrong. Evidence: concrete proof (file:line, command output, a test). A rejection backed by evidence is a valid outcome; never bend the code just to make a finding go away. If Codex keeps a rejected finding open, it goes to the user.
-   - `needs-human` — it hinges on a product or design choice only the user can make. This hands the review to the user.
-3. **Write all dispositions** to the `dispositions.json` path from the hook message, as a JSON array: `[{ "id": "C1", "disposition": "accepted", "evidence": "..." }]`. Include earlier entries that still apply.
+1. **Verify it.** Reproduce a behaviour claim with a throwaway probe test; check a code claim by reading the code and running what you can. Review findings read from code alone are often wrong.
+2. **Decide:**
+   - **Holds up:** fix it. For behaviour, write a failing test that captures the finding first. Fix the pattern, not the line: state the underlying bug in one sentence, then fix every instance in the surrounding code.
+   - **Wrong:** leave the code as it is, and give the proof: file:line, command output or a test.
+   - **Needs a product or design call:** leave it for the user, and say what the choice is.
+3. **Answer it in your reply**, one line per finding: its claim in a few words, your decision, and the evidence. Codex reads this reply next round as claims to check.
 
-## Fixing an accepted finding
-
-- For behaviour, write a failing test that captures the finding first, then fix.
-- Fix the pattern, not the line: state the underlying bug in one sentence, search the surrounding component for the same pattern, and fix every instance.
-- If Codex needs an external source to verify something (docs, an issue), save it as a local file and cite the path; Codex has no network.
+Triage is done when every finding has its line in the reply.
 
 ## Then
 
-Call `ExitPlanMode` again (plan) or finish and stop again (code). Tell the user briefly which findings you accepted, rejected or escalated.
+- **Plan:** revise the plan and call `ExitPlanMode` again.
+- **Code:** stop again. A changed tree starts the next round. A stop with nothing changed lets you through, and tells the user which blockers are still open.
+
+When the round cap is reached, the user decides with the open findings in front of them.

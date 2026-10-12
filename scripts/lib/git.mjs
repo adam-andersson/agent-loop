@@ -30,25 +30,6 @@ export function sharedStateKey(cwd) {
   }
 }
 
-function revParse(root, revision) {
-  try {
-    return execFileSync("git", ["-C", root, "rev-parse", "--verify", "--quiet", revision], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-  } catch {
-    return null;
-  }
-}
-
-export function headCommit(root) {
-  return revParse(root, "HEAD");
-}
-
-export function headTree(root) {
-  return revParse(root, "HEAD^{tree}");
-}
-
 function entryExists(file) {
   try {
     lstatSync(file);

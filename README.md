@@ -1,54 +1,70 @@
 # agent-loop
 
-Claude Code hooks and skills that put Codex review gates around Opus planning and implementation:
+A Claude Code plugin in which Codex reviews Claude's plans and code, as two separate loops with Claude triaging the findings.
+
+## Plan loop
 
 ```
-Opus plans ──ExitPlanMode──► plan-gate: Codex reviews the plan
-   ▲                           │ blocking findings → deny, Opus triages (codex-review skill) and revises
-   └───────────────────────────┘ approve / escalate / not reviewed → "ask": the user approves or rejects
-User approves ──► plan-approved: records the plan and snapshots the tree, turns on the code gate
-Opus implements (feature skill, outside-in TDD) and stops ──► code-gate: Codex reviews the cycle's diff
-   ▲                           │ blocking findings → block the stop, Opus triages and fixes
-   └───────────────────────────┘ pass → next section; escalate → paused until the user commits or approves a plan; not reviewed → notice, stop allowed, retried on the next stop
+Claude calls ExitPlanMode ──► Codex reviews the plan
+   ▲                            │ blocking findings, under the round cap → deny: Claude triages and revises
+   └────────────────────────────┘ otherwise → the approval dialog, with the review: the user decides
 ```
 
-Claude Code's plan approval dialog shows neither a hook's reason nor its `systemMessage`, so whenever the plan gate hands the plan to the user it appends a `## Codex review` section to the plan through `updatedInput`; that is what the dialog displays. The code gate's outcomes reach the user as one-line `systemMessage` notices.
+## Code loop
 
-- Both gates prompt Codex for an adversarial review, adapted from the Codex plugin's `prompts/adversarial-review.md`: tagged blocks for stance, attack surface (one for plans, one for code), finding bar, grounding and calibration, with the plan, diff and dispositions last as untrusted data that is never closed. Every evidenced blocker must be reported in whatever round it is found, because the gate passes once none is open. The plan review also does a design review (the core model, the strongest alternative, sequencing) whose findings are non-blocking with a concrete recommendation, unless the plan as written would give a wrong or unsafe result; its summary names the one change that would most improve the plan.
-- Codex always runs read-only with an explicit model (`hooks/codex-review/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
-- Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
-- The hooks own `ledger.json` (findings, rounds, snapshots, raw Codex outputs under `reviews/`). Opus writes only `dispositions.json`, which Codex sees as claims to verify; dispositions never close a finding. Only Codex's `resolved` or `withdrawn` does, and a carried finding it doesn't mention stays open. The one exception is plan approval: every hand-off dialog lists all open plan findings with their recommendations, and approving that very `ExitPlanMode` call (matched by `tool_use_id`) marks the findings it showed `superseded`, so they are not carried into the next plan. Code findings keep these rules.
-- Escalation to the user: the round cap, a `needs-human` disposition, or Codex keeping open a finding Opus rejected with evidence.
-- State lives in `~/.cache/claude-codex-review/<session>/<repo-hash>/`, one per session and repository, shared by all its worktrees: a plan approved in the main checkout gates code stopped in a worktree. An escalation pause belongs to the checkout that escalated and ends only on a commit there.
+```
+User approves the plan ──► records the plan and the tree as the section base
+Claude stops with changes ──► Codex reviews the whole section (base..now) against the plan
+   ▲                            │ blocking findings, under the round cap → block: Claude triages, fixes, stops again
+   └────────────────────────────┘ pass → notice, the base moves on; cap reached → notice, the user decides
+```
+
+Each round is a fresh review of the current plan or section, with Codex's previous report and Claude's reply as context, so a blocker Codex no longer reports is fixed. At the round cap the code loop keeps the section base, so later rounds still cover the unresolved section until a pass. A stop with nothing changed since a block goes through with a notice; Claude Code's own cap on consecutive Stop blocks is the outer guard.
+
+A follow-up that changes behaviour revises the approved plan through `ExitPlanMode`, so Codex reviews the full revised plan and the code review checks against it. Approving a revised or new plan replaces the plan and keeps the section base, so edits not yet reviewed stay in review; after the round cap, approval accepts the capped review and moves the base to the tree it covered.
+
+## Design choices
+
+- **Hooks are the gates**, so a review cannot be skipped or paraphrased. Only blocking findings block: a reviewer asked to find gaps always finds some ([Claude Code best practices](https://code.claude.com/docs/en/best-practices)).
+- **A different model reviews**, in a fresh context, since a model judging its own output favours it ([Panickssery et al., 2024](https://arxiv.org/abs/2404.13076)). Claude verifies each finding before acting on it, and Codex checks Claude's reply against the code rather than ruling on it as an argument.
+- **Codex runs read-only**, with an explicit model, the prompt on stdin and a JSON schema (`schemas/review.json`). A failed, empty or malformed run is "NOT reviewed", never a pass.
+- **The prompts** (`prompts/`) follow the Codex plugin's adversarial review: one template per loop, shared rules, and the plan, report and reply last as untrusted material that is never closed.
+- **State** is one small file per loop in `${CLAUDE_PLUGIN_DATA}/<session>/<repository>/`. Worktrees of a repository share it, so a plan approved in one gates the others; separate repositories and submodules stay apart. Snapshots are git tree objects, untracked files included; nothing is committed.
+
+## Skills
+
+- `plan-feature`: what a reviewable plan contains, and how the plan review and approval go.
+- `implement-plan`: outside-in TDD per section, under code review at each stop.
+- `codex-review`: triage of Codex's findings.
 
 ## Install
 
+Install the plugin from this repository, which is its own marketplace:
+
+```
+/plugin marketplace add ~/dev/agent-loop
+/plugin install agent-loop@agent-loop
+```
+
+Keep the Codex plugin's own stop review gate disabled. To try local changes without installing, start Claude Code with `claude --plugin-dir ~/dev/agent-loop`.
+
+`codex/AGENTS.md` holds personal working agreements for Claude Code and Codex, outside the plugin. To use them, link them for Codex and import them in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS.md`:
+
 ```bash
-ln -s ~/dev/agent-loop/hooks/codex-review ~/.claude/hooks/codex-review
-ln -s ~/dev/agent-loop/skills/feature ~/.claude/skills/feature
-ln -s ~/dev/agent-loop/skills/codex-review ~/.claude/skills/codex-review
 ln -s ~/dev/agent-loop/codex/AGENTS.md ~/.codex/AGENTS.md
 ```
 
-Then add to `~/.claude/settings.json`:
+### Migrating from the symlinked hooks
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-gate.mjs\"", "timeout": 1500 }] }
-    ],
-    "PostToolUse": [
-      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-approved.mjs\"" }] }
-    ],
-    "Stop": [
-      { "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/code-gate.mjs\"", "timeout": 1500 }] }
-    ]
-  }
-}
-```
+Remove the old install before installing the plugin, so each gate runs once:
 
-and import the shared agreements in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS.md`. Keep the Codex plugin's own stop review gate disabled.
+1. Delete the `plan-gate.mjs`, `plan-approved.mjs` and `code-gate.mjs` entries from `hooks` in `~/.claude/settings.json`.
+2. `rm ~/.claude/hooks/codex-review ~/.claude/skills/feature ~/.claude/skills/codex-review` (symlinks only).
+3. Rename skill references in your own instructions: `feature` is now `agent-loop:plan-feature` and `agent-loop:implement-plan`, and `codex-review` is `agent-loop:codex-review`.
+
+## Configure
+
+`config.json` sets the Codex model, the optional reasoning `effort`, the round caps (`planRounds`, `codeRounds`) and the run timeout (`timeoutSec`).
 
 ## Test
 
@@ -56,4 +72,4 @@ and import the shared agreements in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS
 npm test
 ```
 
-Codex is replaced by `hooks/codex-review/test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.
+Codex is replaced by `test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.
