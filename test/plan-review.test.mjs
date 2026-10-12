@@ -17,17 +17,13 @@ test("denies the plan with Codex's blocking findings and points Claude to triage
   assert.equal(t.state("plan").round, 1);
 });
 
-test("asks the user, never allows, when Codex finds no blocker, and shows the review in the dialog", () => {
+test("asks the user, never allows, when Codex finds no blocker, with the review and its findings as the reason", () => {
   const t = setup();
   t.respondWith(reviewJson({ summary: "Looks sound.", findings: [blockingFinding({ severity: "non-blocking", claim: "a cheaper option" })] }));
-  const input = exitPlanMode("# The plan\n\nSteps.");
-  input.tool_input.planFilePath = "/home/.claude/plans/the-plan.md";
-  const result = decision(t.run("plan-review.mjs", input));
+  const result = decision(t.run("plan-review.mjs", exitPlanMode("# The plan\n\nSteps.")));
   assert.equal(result.permissionDecision, "ask");
-  assert.match(result.permissionDecisionReason, /approve\. Looks sound\./);
-  assert.equal(result.updatedInput.planFilePath, "/home/.claude/plans/the-plan.md");
-  assert.ok(result.updatedInput.plan.startsWith("# The plan\n\nSteps."));
-  assert.match(result.updatedInput.plan, /## Codex review\n\n.*approve\. Looks sound\.[\s\S]*a cheaper option/);
+  assert.match(result.permissionDecisionReason, /approve\. Looks sound\.[\s\S]*a cheaper option/);
+  assert.equal(result.updatedInput, undefined);
 });
 
 test("a revised plan is reviewed with Codex's previous report, and the run ends when the user decides", () => {
@@ -68,7 +64,6 @@ test("asks the user when the review failed, without counting a round", () => {
   const result = t.run("plan-review.mjs", exitPlanMode(), { FAKE_CODEX_MODE: "exit-nonzero" });
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /NOT reviewed/);
-  assert.match(decision(result).updatedInput.plan, /NOT reviewed/);
   assert.equal(t.state("plan").round, 0);
 });
 

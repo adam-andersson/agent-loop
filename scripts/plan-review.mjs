@@ -4,18 +4,17 @@ import { emit, hookContext, readHookInput } from "./lib/state.mjs";
 
 const NEW_RUN = { round: 0, lastReport: null };
 
-function respond(permissionDecision, reason, { notice = reason.split("\n")[0], updatedInput } = {}) {
+function respond(permissionDecision, reason, notice = reason.split("\n")[0]) {
   emit({
     systemMessage: notice,
-    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason: reason, updatedInput },
+    hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision, permissionDecisionReason: reason },
   });
 }
 
-// The plan approval dialog shows the plan, so the review is appended to it as well as given as
-// the reason. "ask", never "allow": the user always makes the final call on a plan.
-function askUser(input, reason) {
-  const plan = input.tool_input?.plan ?? "";
-  respond("ask", reason, { updatedInput: { ...input.tool_input, plan: `${plan}\n\n---\n\n## Codex review\n\n${reason}\n` } });
+// "ask", never "allow": the user always makes the final call on a plan. The approval dialog
+// shows the reason under the plan.
+function askUser(reason) {
+  respond("ask", reason);
 }
 
 function main() {
@@ -33,7 +32,7 @@ function main() {
 
   if (result.status === "not-reviewed") {
     save("plan", NEW_RUN);
-    askUser(input, `Codex: plan NOT reviewed (${result.reason}). Approve without a review, or reject to retry.`);
+    askUser(`Codex: plan NOT reviewed (${result.reason}). Approve without a review, or reject to retry.`);
     return;
   }
 
@@ -45,7 +44,7 @@ function main() {
     respond(
       "deny",
       `${header}: revise. ${summary}\n${formatFindings(findings)}\nTriage each finding with the agent-loop:codex-review skill, revise the plan, and call ExitPlanMode again.`,
-      { notice: `${header}: revise, ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"} sent back to Claude.` }
+      `${header}: revise, ${blocking.length} blocking finding${blocking.length === 1 ? "" : "s"} sent back to Claude.`
     );
     return;
   }
@@ -53,7 +52,7 @@ function main() {
   // The run ends here: the user decides, and a revision after a rejection starts a new run.
   save("plan", NEW_RUN);
   const verdict = blocking.length > 0 ? `needs your decision, ${blocking.length} blocking after ${round} rounds` : "approve";
-  askUser(input, `${header}: ${verdict}. ${summary}${findings.length > 0 ? `\n${formatFindings(findings)}` : ""}`);
+  askUser(`${header}: ${verdict}. ${summary}${findings.length > 0 ? `\n${formatFindings(findings)}` : ""}`);
 }
 
 try {

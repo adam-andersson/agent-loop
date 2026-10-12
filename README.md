@@ -7,7 +7,7 @@ A Claude Code plugin in which Codex reviews Claude's plans and code, as two sepa
 ```
 Claude calls ExitPlanMode ──► Codex reviews the plan
    ▲                            │ blocking findings, under the round cap → deny: Claude triages and revises
-   └────────────────────────────┘ otherwise → the approval dialog, with the review appended: the user decides
+   └────────────────────────────┘ otherwise → the approval dialog, with the review: the user decides
 ```
 
 ## Code loop
