@@ -4,9 +4,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.mjs";
+import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.ts";
 
-function git(cwd, ...args) {
+function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf8" }).trim();
 }
 

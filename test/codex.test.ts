@@ -4,12 +4,13 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCodex } from "../scripts/lib/codex.mjs";
+import { runCodex } from "../scripts/lib/codex.ts";
+import type { Config, Review } from "../scripts/lib/types.ts";
 
-const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
-const config = { model: "gpt-6.1-sol", timeoutSec: 5 };
+const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.ts", import.meta.url));
+const config: Config = { model: "gpt-6.1-sol", planRounds: 3, codeRounds: 3, timeoutSec: 5 };
 
-function validReview(overrides = {}) {
+function validReview(overrides: object = {}): Review {
   return {
     verdict: "approve",
     summary: "fine",
@@ -19,7 +20,9 @@ function validReview(overrides = {}) {
   };
 }
 
-function run({ mode = "ok", response = validReview(), configOverrides = {} } = {}) {
+type RunOptions = { mode?: string; response?: object | string; configOverrides?: Partial<Config> };
+
+function run({ mode = "ok", response = validReview(), configOverrides = {} }: RunOptions = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), "codex-test-"));
   const responseFile = path.join(dir, "response.json");
   writeFileSync(responseFile, typeof response === "string" ? response : JSON.stringify(response));
@@ -39,7 +42,7 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} } = {
     config: { ...config, ...configOverrides },
     env,
   });
-  let calls = [];
+  let calls: { args: string[]; stdin: string }[] = [];
   try {
     calls = readFileSync(log, "utf8").trim().split("\n").map((line) => JSON.parse(line));
   } catch {
@@ -73,7 +76,7 @@ test("passes the prompt on stdin and names model, sandbox and schema explicitly"
 });
 
 test("adds the reasoning effort only when configured", () => {
-  assert.ok(!run().calls[0].args.some((arg) => arg.startsWith("model_reasoning_effort")));
+  assert.ok(!run().calls[0].args.some((arg: string) => arg.startsWith("model_reasoning_effort")));
   const { calls } = run({ configOverrides: { effort: "high" } });
   assert.ok(calls[0].args.includes("model_reasoning_effort=high"));
 });
@@ -87,7 +90,7 @@ for (const [mode, reason] of [
   ["exit-nonzero", /exit/i],
   ["empty", /empty/i],
   ["garbage", /json/i],
-]) {
+] as const) {
   test(`a ${mode} run is not reviewed`, () => {
     const { result } = run({ mode });
     assert.equal(result.status, "not-reviewed");
@@ -116,7 +119,7 @@ for (const [label, overrides] of [
   ["a non-string inspected file", { files_inspected: [null] }],
   ["a finding with only a severity", { findings: [{ severity: "blocking" }] }],
   ["a finding with a non-string claim", { findings: [{ severity: "blocking", claim: 1, evidence: "e", recommendation: "r" }] }],
-]) {
+] as [string, object][]) {
   test(`a review with ${label} is not reviewed`, () => {
     const { result } = run({ response: validReview(overrides) });
     assert.equal(result.status, "not-reviewed");

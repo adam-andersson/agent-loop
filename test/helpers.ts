@@ -3,13 +3,18 @@ import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadState, stateDir } from "../scripts/lib/state.mjs";
+import { loadState, stateDir } from "../scripts/lib/state.ts";
+import type { Config, Finding, LoopState, Review } from "../scripts/lib/types.ts";
 
 export const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
 const scriptsDir = path.join(pluginRoot, "scripts");
-const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
+const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.ts", import.meta.url));
 
-export function blockingFinding(overrides = {}) {
+// Hook output is loosely typed on purpose: tests assert on whatever the hook emitted.
+export type HookResult = { status: number | null; stderr: string; output: any };
+type Env = Record<string, string>;
+
+export function blockingFinding(overrides: Partial<Finding> = {}): Finding {
   return {
     severity: "blocking",
     claim: "the bug",
@@ -19,7 +24,7 @@ export function blockingFinding(overrides = {}) {
   };
 }
 
-export function reviewJson(overrides = {}) {
+export function reviewJson(overrides: Partial<Review> = {}): Review {
   return {
     verdict: "approve",
     summary: "summary",
@@ -29,11 +34,11 @@ export function reviewJson(overrides = {}) {
   };
 }
 
-export function revise(...findings) {
+export function revise(...findings: Finding[]): Review {
   return reviewJson({ verdict: "revise", findings: findings.length > 0 ? findings : [blockingFinding()] });
 }
 
-export function setup({ repo = true, config = {} } = {}) {
+export function setup({ repo = true, config = {} }: { repo?: boolean; config?: Partial<Config> } = {}) {
   const base = realpathSync(mkdtempSync(path.join(tmpdir(), "hooks-test-")));
   const home = path.join(base, "home");
   const cwd = path.join(base, "repo");
@@ -47,7 +52,7 @@ export function setup({ repo = true, config = {} } = {}) {
     configPath,
     JSON.stringify({ model: "gpt-6.1-sol", planRounds: 3, codeRounds: 3, timeoutSec: 5, ...config })
   );
-  const responses = [];
+  const responses: string[] = [];
   const counter = path.join(base, "counter");
   const log = path.join(base, "codex-log.jsonl");
 
@@ -56,14 +61,14 @@ export function setup({ repo = true, config = {} } = {}) {
     home,
     cwd,
     sessionId: "session-1",
-    respondWith(...reviews) {
+    respondWith(...reviews: (Review | string)[]) {
       for (const review of reviews) {
         const file = path.join(base, `response-${responses.length}.json`);
         writeFileSync(file, typeof review === "string" ? review : JSON.stringify(review));
         responses.push(file);
       }
     },
-    env(extra = {}) {
+    env(extra: Env = {}): NodeJS.ProcessEnv {
       return {
         ...process.env,
         CODEX_BIN: fakeCodex,
@@ -75,14 +80,14 @@ export function setup({ repo = true, config = {} } = {}) {
         ...extra,
       };
     },
-    run(script, input, extraEnv) {
+    run(script: string, input: object, extraEnv?: Env): HookResult {
       return context.runCommand("node", [path.join(scriptsDir, script)], input, extraEnv);
     },
     // Runs a hooks.json command the way Claude Code does: through a shell, with the plugin root set.
-    runRegistered(command, input) {
+    runRegistered(command: string, input: object): HookResult {
       return context.runCommand("sh", ["-c", command], input, { CLAUDE_PLUGIN_ROOT: pluginRoot });
     },
-    runCommand(file, args, input, extraEnv) {
+    runCommand(file: string, args: string[], input: object, extraEnv?: Env): HookResult {
       const result = spawnSync(file, args, {
         input: JSON.stringify({ session_id: context.sessionId, cwd, ...input }),
         env: context.env(extraEnv),
@@ -94,30 +99,31 @@ export function setup({ repo = true, config = {} } = {}) {
         output: result.stdout.trim() ? JSON.parse(result.stdout) : {},
       };
     },
-    codexCalls() {
+    codexCalls(): { args: string[]; stdin: string }[] {
       try {
         return readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
       } catch {
         return [];
       }
     },
-    // The state a loop keeps for the repository that dir belongs to.
-    state(loop, dir = cwd) {
-      return loadState(stateDir(context.sessionId, dir, { CODEX_REVIEW_HOME: home }), loop);
+    // The state a loop keeps for the repository that dir belongs to. Tests read it only once a
+    // hook has written it.
+    state<L extends keyof LoopState>(loop: L, dir = cwd): LoopState[L] {
+      return loadState(stateDir(context.sessionId, dir, { CODEX_REVIEW_HOME: home }), loop)!;
     },
-    write(file, content) {
+    write(file: string, content: string) {
       writeFileSync(path.join(cwd, file), content);
     },
-    commitEmpty(message, dir = cwd) {
+    commitEmpty(message: string, dir = cwd) {
       execFileSync("git", [
         "-C", dir, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", message,
       ]);
     },
-    commitAll(message, dir = cwd) {
+    commitAll(message: string, dir = cwd) {
       execFileSync("git", ["-C", dir, "add", "-A"]);
       execFileSync("git", ["-C", dir, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "-m", message]);
     },
-    addWorktree(name) {
+    addWorktree(name: string) {
       const worktree = path.join(base, name);
       execFileSync("git", ["-C", cwd, "worktree", "add", "-q", "-b", name, worktree]);
       return worktree;
@@ -141,6 +147,6 @@ export function planApproved(plan = DEFAULT_PLAN) {
   };
 }
 
-export function stop(extra = {}) {
+export function stop(extra: object = {}) {
   return { hook_event_name: "Stop", stop_hook_active: false, ...extra };
 }

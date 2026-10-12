@@ -2,10 +2,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { exitPlanMode, planApproved, pluginRoot, reviewJson, setup, stop } from "./helpers.mjs";
+import { exitPlanMode, planApproved, pluginRoot, reviewJson, setup, stop } from "./helpers.ts";
 
 const registered = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")).hooks;
-const sampleInput = { PreToolUse: exitPlanMode(), PostToolUse: planApproved(), Stop: stop() };
+const sampleInput: Record<string, object> = { PreToolUse: exitPlanMode(), PostToolUse: planApproved(), Stop: stop() };
 
 test("every hook registered in hooks.json runs from the plugin root", () => {
   const t = setup();
