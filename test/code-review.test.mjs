@@ -173,15 +173,74 @@ test("after the cap an unrelated edit is still reviewed against the whole unreso
   assert.equal(diffRange(t.codexCalls()[1].stdin)[0], base);
 });
 
-test("a new plan approval starts a new section from the current tree", () => {
+test("a revised plan approved with unreviewed edits replaces the plan and keeps them in the section", () => {
+  const t = setup();
+  t.commitAll("init");
+  t.run("plan-approved.mjs", planApproved("# Plan A: multiply rejects strings"));
+  const { base } = t.state("code");
+  t.write("a.txt", "changed\n");
+  t.run("plan-approved.mjs", planApproved("# Plan B: multiply accepts strings via int()"));
+  t.respondWith(reviewJson());
+  t.run("code-review.mjs", stop());
+  const prompt = t.codexCalls()[0].stdin;
+  assert.equal(diffRange(prompt)[0], base);
+  assert.match(prompt, /# Plan B/);
+  assert.doesNotMatch(prompt, /# Plan A/);
+});
+
+test("a new plan approved after a pass starts from the passed tree", () => {
+  const t = approved();
+  t.respondWith(reviewJson(), reviewJson());
+  t.write("a.txt", "changed\n");
+  t.run("code-review.mjs", stop());
+  const passed = t.state("code").base;
+  t.run("plan-approved.mjs", planApproved("# Plan B"));
+  t.write("a.txt", "next feature\n");
+  t.run("code-review.mjs", stop());
+  const prompt = t.codexCalls()[1].stdin;
+  assert.equal(diffRange(prompt)[0], passed);
+  assert.match(prompt, /# Plan B/);
+});
+
+test("a plan approved right after the round cap moves the base to the capped tree", () => {
   const t = approved({ config: { codeRounds: 1 } });
   t.respondWith(revise());
   t.write("a.txt", "changed\n");
   t.run("code-review.mjs", stop());
-  t.run("plan-approved.mjs", planApproved("# Next plan"));
+  t.run("plan-approved.mjs", planApproved("# Plan B"));
   assert.deepEqual(t.run("code-review.mjs", stop()).output, {});
-  assert.equal(t.state("code").plan, "# Next plan");
+  assert.equal(t.state("code").plan, "# Plan B");
   assert.equal(t.codexCalls().length, 1);
+});
+
+test("edits made after the round cap stay in review when a plan is approved", () => {
+  const t = approved({ config: { codeRounds: 1 } });
+  t.respondWith(revise(), reviewJson());
+  t.write("a.txt", "changed\n");
+  t.run("code-review.mjs", stop());
+  const capped = t.state("code").lastTree;
+  t.write("a.txt", "changed after the cap\n");
+  t.run("plan-approved.mjs", planApproved("# Plan B"));
+  t.run("code-review.mjs", stop());
+  assert.equal(t.codexCalls().length, 2);
+  assert.equal(diffRange(t.codexCalls()[1].stdin)[0], capped);
+});
+
+test("a revised plan approved after a block, with no edit, is reviewed afresh from the section base", () => {
+  const t = approved();
+  const { base } = t.state("code");
+  t.respondWith(revise(blockingFinding({ claim: "drift from the plan" })), revise());
+  t.write("a.txt", "changed\n");
+  t.run("code-review.mjs", stop());
+  t.run("plan-approved.mjs", planApproved("# Plan B"));
+  const { output } = t.run("code-review.mjs", stop());
+  assert.equal(t.codexCalls().length, 2);
+  const prompt = t.codexCalls()[1].stdin;
+  assert.equal(diffRange(prompt)[0], base);
+  assert.match(prompt, /# Plan B/);
+  assert.doesNotMatch(prompt, /drift from the plan/);
+  assert.match(prompt, /review round 1 of/);
+  assert.equal(output.decision, "block");
 });
 
 test("a plan approved in the main checkout gates a stop in a linked worktree", () => {

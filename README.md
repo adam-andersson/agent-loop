@@ -19,7 +19,9 @@ Claude stops with changes ──► Codex reviews the whole section (base..now) 
    └────────────────────────────┘ pass → notice, the base moves on; cap reached → notice, the user decides
 ```
 
-Each round is a fresh review of the current plan or section, with Codex's previous report and Claude's reply as context, so a blocker Codex no longer reports is fixed. At the round cap the code loop keeps the section base, so later rounds still cover the unresolved section until a pass or a new plan approval. A stop with nothing changed since a block goes through with a notice; Claude Code's own cap on consecutive Stop blocks is the outer guard.
+Each round is a fresh review of the current plan or section, with Codex's previous report and Claude's reply as context, so a blocker Codex no longer reports is fixed. At the round cap the code loop keeps the section base, so later rounds still cover the unresolved section until a pass. A stop with nothing changed since a block goes through with a notice; Claude Code's own cap on consecutive Stop blocks is the outer guard.
+
+A follow-up that changes behaviour revises the approved plan through `ExitPlanMode`, so Codex reviews the full revised plan and the code review checks against it. Approving a revised or new plan replaces the plan and keeps the section base, so edits not yet reviewed stay in review; after the round cap, approval accepts the capped review and moves the base to the tree it covered.
 
 ## Design choices
 

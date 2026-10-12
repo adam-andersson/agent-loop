@@ -16,6 +16,12 @@ Start once the user has approved the plan in the `ExitPlanMode` dialog: that app
 
 Mock only at module boundaries, and give every test a way to go red.
 
+## Follow-ups
+
+When the user asks for a change the approved plan does not cover, enter plan mode and revise the approved plan to include it: update the affected acceptance criteria and tests, replace any requirement the change supersedes, and keep the rest. Get the revised plan approved through `ExitPlanMode` before implementing the change; the code review then checks the section against the revised plan.
+
+A change that keeps the plan's behaviour, such as a rename, an extra test or a refactor, needs no revision.
+
 ## End of section
 
 1. Run the repository's checks, as its `AGENTS.md` or `CLAUDE.md` defines them.
