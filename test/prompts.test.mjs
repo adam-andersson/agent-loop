@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { codePrompt, planPrompt } from "../lib/prompts.mjs";
+import { codePrompt, planPrompt } from "../scripts/lib/prompts.mjs";
 
 const SHARED_ORDER = [
   "role",

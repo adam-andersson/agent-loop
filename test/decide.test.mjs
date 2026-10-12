@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { decideRound, parseDispositions } from "../lib/decide.mjs";
+import { decideRound, parseDispositions } from "../scripts/lib/decide.mjs";
 
 function finding(overrides = {}) {
   return {

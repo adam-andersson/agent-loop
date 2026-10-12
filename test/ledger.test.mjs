@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { emptyLedger, ledgerPaths, loadLedger, readDispositions, saveLedger } from "../lib/ledger.mjs";
+import { emptyLedger, ledgerPaths, loadLedger, readDispositions, saveLedger } from "../scripts/lib/ledger.mjs";
 
 function home() {
   return mkdtempSync(path.join(tmpdir(), "ledger-test-"));

@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import path from "node:path";
-import { headCommit, snapshotTree } from "../lib/git.mjs";
-import { emptyLedger } from "../lib/ledger.mjs";
+import { headCommit, snapshotTree } from "../scripts/lib/git.mjs";
+import { emptyLedger } from "../scripts/lib/ledger.mjs";
 import { blockingFinding, planApproved, reviewJson, setup, stop } from "./helpers.mjs";
 
 function approved(options) {

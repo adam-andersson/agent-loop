@@ -15,7 +15,7 @@ Opus implements (feature skill, outside-in TDD) and stops ──► code-gate: C
 Claude Code's plan approval dialog shows neither a hook's reason nor its `systemMessage`, so whenever the plan gate hands the plan to the user it appends a `## Codex review` section to the plan through `updatedInput`; that is what the dialog displays. The code gate's outcomes reach the user as one-line `systemMessage` notices.
 
 - Both gates prompt Codex for an adversarial review, adapted from the Codex plugin's `prompts/adversarial-review.md`: tagged blocks for stance, attack surface (one for plans, one for code), finding bar, grounding and calibration, with the plan, diff and dispositions last as untrusted data that is never closed. Every evidenced blocker must be reported in whatever round it is found, because the gate passes once none is open. The plan review also does a design review (the core model, the strongest alternative, sequencing) whose findings are non-blocking with a concrete recommendation, unless the plan as written would give a wrong or unsafe result; its summary names the one change that would most improve the plan.
-- Codex always runs read-only with an explicit model (`hooks/codex-review/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
+- Codex always runs read-only with an explicit model (`scripts/config.json`), the prompt on stdin, and a JSON schema for its findings. A failed, empty, truncated or file-less run is "not reviewed", never a pass.
 - Snapshots are git tree objects (temporary index + `write-tree`); nothing is committed. Each round reviews the whole cycle (`cycleBase..tree`) and names what changed since the previous round.
 - The hooks own `ledger.json` (findings, rounds, snapshots, raw Codex outputs under `reviews/`). Opus writes only `dispositions.json`, which Codex sees as claims to verify; dispositions never close a finding. Only Codex's `resolved` or `withdrawn` does, and a carried finding it doesn't mention stays open. The one exception is plan approval: every hand-off dialog lists all open plan findings with their recommendations, and approving that very `ExitPlanMode` call (matched by `tool_use_id`) marks the findings it showed `superseded`, so they are not carried into the next plan. Code findings keep these rules.
 - Escalation to the user: the round cap, a `needs-human` disposition, or Codex keeping open a finding Opus rejected with evidence.
@@ -23,32 +23,27 @@ Claude Code's plan approval dialog shows neither a hook's reason nor its `system
 
 ## Install
 
+Install the plugin from this repository, which is its own marketplace:
+
+```
+/plugin marketplace add ~/dev/agent-loop
+/plugin install agent-loop@agent-loop
+```
+
+Link the shared agreements for Codex and import them in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS.md`:
+
 ```bash
-ln -s ~/dev/agent-loop/hooks/codex-review ~/.claude/hooks/codex-review
-ln -s ~/dev/agent-loop/skills/feature ~/.claude/skills/feature
-ln -s ~/dev/agent-loop/skills/codex-review ~/.claude/skills/codex-review
 ln -s ~/dev/agent-loop/codex/AGENTS.md ~/.codex/AGENTS.md
 ```
 
-Then add to `~/.claude/settings.json`:
+Keep the Codex plugin's own stop review gate disabled. To try local changes without installing, start Claude Code with `claude --plugin-dir ~/dev/agent-loop`.
 
-```json
-{
-  "hooks": {
-    "PreToolUse": [
-      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-gate.mjs\"", "timeout": 1500 }] }
-    ],
-    "PostToolUse": [
-      { "matcher": "ExitPlanMode", "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/plan-approved.mjs\"" }] }
-    ],
-    "Stop": [
-      { "hooks": [{ "type": "command", "command": "node \"$HOME/.claude/hooks/codex-review/code-gate.mjs\"", "timeout": 1500 }] }
-    ]
-  }
-}
-```
+### Migrating from the symlinked hooks
 
-and import the shared agreements in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS.md`. Keep the Codex plugin's own stop review gate disabled.
+Remove the old install before installing the plugin, or every gate runs twice:
+
+1. Delete the `plan-gate.mjs`, `plan-approved.mjs` and `code-gate.mjs` entries from `hooks` in `~/.claude/settings.json`.
+2. `rm ~/.claude/hooks/codex-review ~/.claude/skills/feature ~/.claude/skills/codex-review` (symlinks only).
 
 ## Test
 
@@ -56,4 +51,4 @@ and import the shared agreements in `~/.claude/CLAUDE.md` with `@~/.codex/AGENTS
 npm test
 ```
 
-Codex is replaced by `hooks/codex-review/test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.
+Codex is replaced by `test/fixtures/fake-codex.mjs` through `CODEX_BIN`; `CODEX_REVIEW_HOME` and `CODEX_REVIEW_CONFIG` redirect state and config.

@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { runCodex } from "../lib/codex.mjs";
+import { runCodex } from "../scripts/lib/codex.mjs";
 
 const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
 const config = { model: "gpt-6.1-sol", timeoutSec: 5 };

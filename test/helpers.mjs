@@ -3,9 +3,10 @@ import { mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ledgerPaths, loadLedger, saveLedger } from "../lib/ledger.mjs";
+import { ledgerPaths, loadLedger, saveLedger } from "../scripts/lib/ledger.mjs";
 
-const hooksDir = fileURLToPath(new URL("..", import.meta.url));
+export const pluginRoot = fileURLToPath(new URL("..", import.meta.url));
+const scriptsDir = path.join(pluginRoot, "scripts");
 const fakeCodex = fileURLToPath(new URL("fixtures/fake-codex.mjs", import.meta.url));
 
 export function blockingFinding(overrides = {}) {
@@ -75,7 +76,14 @@ export function setup({ repo = true, config = {} } = {}) {
       };
     },
     run(script, input, extraEnv) {
-      const result = spawnSync("node", [path.join(hooksDir, script)], {
+      return context.runCommand("node", [path.join(scriptsDir, script)], input, extraEnv);
+    },
+    // Runs a hooks.json command the way Claude Code does: through a shell, with the plugin root set.
+    runRegistered(command, input) {
+      return context.runCommand("sh", ["-c", command], input, { CLAUDE_PLUGIN_ROOT: pluginRoot });
+    },
+    runCommand(file, args, input, extraEnv) {
+      const result = spawnSync(file, args, {
         input: JSON.stringify({ session_id: context.sessionId, cwd, ...input }),
         env: context.env(extraEnv),
         encoding: "utf8",
