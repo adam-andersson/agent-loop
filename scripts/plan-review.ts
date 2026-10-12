@@ -1,4 +1,5 @@
 import { blockingFindings, formatFindings, runCodex } from "./lib/codex.ts";
+import { loadConfig } from "./lib/config.ts";
 import { planPrompt } from "./lib/prompts.ts";
 import { emit, hookContext, readHookInput } from "./lib/state.ts";
 import type { PlanState } from "./lib/types.ts";
@@ -20,7 +21,8 @@ function askUser(reason: string): void {
 
 function main() {
   const input = readHookInput();
-  const { config, root, reviews, load, save } = hookContext(input);
+  const config = loadConfig();
+  const { root, reviews, load, save } = hookContext(input);
   const state = load("plan") ?? NEW_RUN;
   const round = state.round + 1;
   const result = runCodex({

@@ -47,10 +47,8 @@ export function setup({ repo = true, config = {} }: { repo?: boolean; config?: P
     execFileSync("git", ["-C", cwd, "init", "-q", "-b", "main"]);
     writeFileSync(path.join(cwd, "a.txt"), "one\n");
   }
-  const configPath = path.join(base, "config.json");
-  writeFileSync(
-    configPath,
-    JSON.stringify({ model: "gpt-6.1-sol", planRounds: 3, codeRounds: 3, timeoutSec: 5, ...config })
+  const options: Env = Object.fromEntries(
+    Object.entries({ timeoutSec: 5, ...config }).map(([key, value]) => [`CLAUDE_PLUGIN_OPTION_${key.toUpperCase()}`, String(value)])
   );
   const responses: string[] = [];
   const counter = path.join(base, "counter");
@@ -68,12 +66,13 @@ export function setup({ repo = true, config = {} }: { repo?: boolean; config?: P
         responses.push(file);
       }
     },
+    // Options inherited from a Claude Code session are dropped, so each test sees only its own.
     env(extra: Env = {}): NodeJS.ProcessEnv {
+      const inherited = Object.entries(process.env).filter(([key]) => !key.startsWith("CLAUDE_PLUGIN_OPTION_"));
       return {
-        ...process.env,
+        ...Object.fromEntries(inherited),
         CODEX_BIN: fakeCodex,
-        CODEX_REVIEW_HOME: home,
-        CODEX_REVIEW_CONFIG: configPath,
+        CLAUDE_PLUGIN_DATA: home,
         FAKE_CODEX_RESPONSES: responses.join(","),
         FAKE_CODEX_COUNTER: counter,
         FAKE_CODEX_LOG: log,
@@ -81,9 +80,10 @@ export function setup({ repo = true, config = {} }: { repo?: boolean; config?: P
       };
     },
     run(script: string, input: object, extraEnv?: Env): HookResult {
-      return context.runCommand("node", [path.join(scriptsDir, script)], input, extraEnv);
+      return context.runCommand("node", [path.join(scriptsDir, script)], input, { ...options, ...extraEnv });
     },
     // Runs a hooks.json command the way Claude Code does: through a shell, with the plugin root set.
+    // No option is set, so the hook runs on the manifest's defaults.
     runRegistered(command: string, input: object): HookResult {
       return context.runCommand("sh", ["-c", command], input, { CLAUDE_PLUGIN_ROOT: pluginRoot });
     },
@@ -109,15 +109,10 @@ export function setup({ repo = true, config = {} }: { repo?: boolean; config?: P
     // The state a loop keeps for the repository that dir belongs to. Tests read it only once a
     // hook has written it.
     state<L extends keyof LoopState>(loop: L, dir = cwd): LoopState[L] {
-      return loadState(stateDir(context.sessionId, dir, { CODEX_REVIEW_HOME: home }), loop)!;
+      return loadState(stateDir(context.sessionId, dir, { CLAUDE_PLUGIN_DATA: home }), loop)!;
     },
     write(file: string, content: string) {
       writeFileSync(path.join(cwd, file), content);
-    },
-    commitEmpty(message: string, dir = cwd) {
-      execFileSync("git", [
-        "-C", dir, "-c", "user.email=t@example.com", "-c", "user.name=T", "commit", "-q", "--allow-empty", "-m", message,
-      ]);
     },
     commitAll(message: string, dir = cwd) {
       execFileSync("git", ["-C", dir, "add", "-A"]);

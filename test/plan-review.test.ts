@@ -69,7 +69,7 @@ test("asks the user when the review failed, without counting a round", () => {
 
 test("asks the user when the hook itself fails", () => {
   const t = setup();
-  const result = t.run("plan-review.ts", exitPlanMode(), { CODEX_REVIEW_CONFIG: "/nonexistent/config.json" });
+  const result = t.run("plan-review.ts", exitPlanMode(), { CLAUDE_PLUGIN_OPTION_TIMEOUTSEC: "abc" });
   assert.equal(result.status, 0);
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /not reviewed/);

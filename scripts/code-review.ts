@@ -1,4 +1,5 @@
 import { blockingFindings, formatFindings, runCodex } from "./lib/codex.ts";
+import { loadConfig } from "./lib/config.ts";
 import { snapshotTree } from "./lib/git.ts";
 import { codePrompt } from "./lib/prompts.ts";
 import { emit, hookContext, readHookInput } from "./lib/state.ts";
@@ -9,7 +10,7 @@ function plural(count: number, noun: string): string {
 
 function main() {
   const input = readHookInput();
-  const { config, root, reviews, load, save } = hookContext(input);
+  const { root, reviews, load, save } = hookContext(input);
   const code = load("code");
   if (!code || !root) return;
 
@@ -25,6 +26,7 @@ function main() {
     return;
   }
 
+  const config = loadConfig();
   const round = code.round + 1;
   const result = runCodex({
     prompt: codePrompt({

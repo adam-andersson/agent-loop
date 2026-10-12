@@ -31,7 +31,7 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} }: Ru
     ...process.env,
     CODEX_BIN: fakeCodex,
     FAKE_CODEX_MODE: mode,
-    FAKE_CODEX_RESPONSE: responseFile,
+    FAKE_CODEX_RESPONSES: responseFile,
     FAKE_CODEX_LOG: log,
   };
   const result = runCodex({

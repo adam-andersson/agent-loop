@@ -2,11 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { repoRoot, sharedStateKey } from "./git.ts";
-import type { Config, HookInput, LoopState } from "./types.ts";
-
-const DEFAULT_CONFIG = fileURLToPath(new URL("../../config.json", import.meta.url));
+import type { HookInput, LoopState } from "./types.ts";
 
 export function readHookInput(): HookInput {
   return JSON.parse(readFileSync(0, "utf8"));
@@ -19,7 +16,7 @@ export function emit(output: object): void {
 // One directory per session and repository: linked worktrees share the git common dir, so a plan
 // approved in one worktree gates the others, while separate repositories and submodules stay apart.
 export function stateDir(sessionId: string, cwd: string, env: NodeJS.ProcessEnv = process.env): string {
-  const home = env.CODEX_REVIEW_HOME ?? env.CLAUDE_PLUGIN_DATA ?? path.join(homedir(), ".cache", "agent-loop");
+  const home = env.CLAUDE_PLUGIN_DATA ?? path.join(homedir(), ".cache", "agent-loop");
   const key = sharedStateKey(cwd) ?? cwd;
   return path.join(home, sessionId, createHash("sha256").update(key).digest("hex").slice(0, 16));
 }
@@ -41,10 +38,8 @@ export function saveState<L extends keyof LoopState>(dir: string, loop: L, state
 }
 
 export function hookContext(input: HookInput, env: NodeJS.ProcessEnv = process.env) {
-  const config: Config = JSON.parse(readFileSync(env.CODEX_REVIEW_CONFIG ?? DEFAULT_CONFIG, "utf8"));
   const dir = stateDir(input.session_id, input.cwd, env);
   return {
-    config,
     root: repoRoot(input.cwd),
     reviews: path.join(dir, "reviews"),
     load: <L extends keyof LoopState>(loop: L) => loadState(dir, loop),

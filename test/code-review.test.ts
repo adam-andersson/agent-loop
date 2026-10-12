@@ -25,6 +25,19 @@ test("plan approval records the approved plan, including dialog edits, and the t
   assert.equal(code.round, 0);
 });
 
+test("a plan approved while an option is invalid is still recorded, and reviewed once the option is fixed", () => {
+  const t = setup();
+  t.commitAll("init");
+  t.run("plan-approved.ts", planApproved("# Approved with a bad option"), { CLAUDE_PLUGIN_OPTION_TIMEOUTSEC: "abc" });
+  const code = t.state("code");
+  assert.equal(code.plan, "# Approved with a bad option");
+  assert.match(code.base, /^[0-9a-f]{40}$/);
+  t.respondWith(reviewJson());
+  t.write("a.txt", "changed\n");
+  t.run("code-review.ts", stop());
+  assert.match(t.codexCalls()[0].stdin, /# Approved with a bad option/);
+});
+
 test("plan approval outside a git repository leaves the code loop off", () => {
   const t = setup({ repo: false });
   t.run("plan-approved.ts", planApproved());
@@ -141,7 +154,7 @@ test("a failed review lets the stop through with a notice, and the next stop ret
 test("lets the stop through with a notice when the hook itself fails", () => {
   const t = approved();
   t.write("a.txt", "changed\n");
-  const result = t.run("code-review.ts", stop(), { CODEX_REVIEW_CONFIG: "/nonexistent/config.json" });
+  const result = t.run("code-review.ts", stop(), { CLAUDE_PLUGIN_OPTION_TIMEOUTSEC: "abc" });
   assert.equal(result.status, 0);
   assert.equal(result.output.decision, undefined);
   assert.match(result.output.systemMessage, /not reviewed/);
