@@ -26,7 +26,6 @@ export function blockingFinding(overrides: Partial<Finding> = {}): Finding {
 
 export function reviewJson(overrides: Partial<Review> = {}): Review {
   return {
-    verdict: "approve",
     summary: "summary",
     files_inspected: ["src/a.ts"],
     findings: [],
@@ -35,7 +34,7 @@ export function reviewJson(overrides: Partial<Review> = {}): Review {
 }
 
 export function revise(...findings: Finding[]): Review {
-  return reviewJson({ verdict: "revise", findings: findings.length > 0 ? findings : [blockingFinding()] });
+  return reviewJson({ findings: findings.length > 0 ? findings : [blockingFinding()] });
 }
 
 export function setup({ repo = true, config = {} }: { repo?: boolean; config?: Partial<Config> } = {}) {

@@ -27,7 +27,6 @@ Return only JSON matching the provided schema.
 - summary: as the task describes.
 - files_inspected: every file you read.
 - findings: every blocking finding that holds in the current state, plus non-blocking findings new in this round.
-- verdict: approve when no finding is blocking, otherwise revise.
 </output_contract>
 
 <untrusted_material>

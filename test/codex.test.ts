@@ -12,7 +12,6 @@ const config: Config = { model: "gpt-6.1-sol", planRounds: 3, codeRounds: 3, tim
 
 function validReview(overrides: object = {}): Review {
   return {
-    verdict: "approve",
     summary: "fine",
     files_inspected: ["src/a.ts"],
     findings: [],
@@ -53,10 +52,10 @@ function run({ mode = "ok", response = validReview(), configOverrides = {} }: Ru
 
 test("returns the parsed review for a valid run, and keeps the raw output", () => {
   const finding = { severity: "blocking", claim: "c", evidence: "a.ts:1", recommendation: "r" };
-  const { result } = run({ response: validReview({ verdict: "revise", findings: [finding] }) });
+  const { result } = run({ response: validReview({ findings: [finding] }) });
   assert.equal(result.status, "reviewed");
   assert.deepEqual(result.review.findings, [finding]);
-  assert.equal(JSON.parse(readFileSync(result.rawPath, "utf8")).verdict, "revise");
+  assert.deepEqual(JSON.parse(readFileSync(result.rawPath, "utf8")).findings, [finding]);
 });
 
 test("names the review schema, whose required fields are exactly what a valid run returns", () => {
@@ -104,13 +103,14 @@ test("a run that exceeds the timeout is not reviewed", () => {
 
 const finding = { severity: "blocking", claim: "c", evidence: "e", recommendation: "r" };
 for (const [label, response] of [
-  ["missing required fields", { verdict: "approve" }],
+  ["a null final message", "null"],
+  ["missing required fields", { summary: "fine" }],
   ["no inspected files", validReview({ files_inspected: [] })],
   ["a non-string inspected file", validReview({ files_inspected: [null] })],
   ["a finding with only a severity", validReview({ findings: [{ severity: "blocking" }] })],
   ["a finding with a non-string claim", validReview({ findings: [{ ...finding, claim: 1 }] })],
   ["a finding with an unknown severity", validReview({ findings: [{ ...finding, severity: "critical" }] })],
-] as [string, object][]) {
+] as [string, object | string][]) {
   test(`a review with ${label} is not reviewed`, () => {
     const { result } = run({ response });
     assert.equal(result.status, "not-reviewed");

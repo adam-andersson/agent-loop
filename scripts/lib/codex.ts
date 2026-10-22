@@ -62,8 +62,7 @@ function notReviewed(reason: string, rawPath: string): CodexResult {
 
 // The parsed output is untrusted until every field is checked.
 function shapeProblem(review: any): string | undefined {
-  if (!["approve", "revise"].includes(review?.verdict)) return "review has no valid verdict";
-  if (typeof review.summary !== "string" || !Array.isArray(review.findings)) return "review is missing its summary or findings";
+  if (typeof review?.summary !== "string" || !Array.isArray(review.findings)) return "review is missing its summary or findings";
   if (!Array.isArray(review.files_inspected) || review.files_inspected.length === 0) {
     return "review inspected no files";
   }
