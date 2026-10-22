@@ -1,9 +1,8 @@
 {
   "type": "object",
   "additionalProperties": false,
-  "required": ["verdict", "summary", "files_inspected", "findings"],
+  "required": ["summary", "files_inspected", "findings"],
   "properties": {
-    "verdict": { "type": "string", "enum": ["approve", "revise"] },
     "summary": { "type": "string" },
     "files_inspected": { "type": "array", "items": { "type": "string" } },
     "findings": {

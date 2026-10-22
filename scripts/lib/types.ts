@@ -23,7 +23,6 @@ export type Finding = {
 };
 
 export type Review = {
-  verdict: "approve" | "revise";
   summary: string;
   files_inspected: string[];
   findings: Finding[];
