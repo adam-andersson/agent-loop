@@ -20,14 +20,16 @@ Triage is done when every finding has its line in the reply.
 
 ## Then
 
-- **Plan:** revise the plan and call `ExitPlanMode` again.
+- **Plan:** revise the plan and call `ExitPlanMode` again. Codex reads only the plan, not your reply, so write the evidence for a finding you judge wrong into the plan, under `## Review notes`.
 - **Code:** stop again. A changed tree starts the next round. A stop with nothing changed lets you through, and tells the user which blockers are still open.
 
 ## At the round cap
 
 The user decides, and no blocker is left open unseen: never treat a capped blocker as resolved.
 
-- **Plan:** the approval dialog lists the open blockers. If the user rejects and asks you to continue, triage and revise as usual; the next `ExitPlanMode` starts a new review run.
-- **Code:** the hook blocks once. Change no code; list each open blocker with your triage, ask the user whether to run more rounds or accept them as open, and stop.
+- **Plan:** the hook denies once. Change nothing in the plan; list each open blocker with your triage, and ask the user with `AskUserQuestion` whether to run more rounds or accept them as open.
+  - **More rounds:** revise the plan as usual, with `## Review notes` for blockers you judge wrong, and call `ExitPlanMode`. A changed plan starts a fresh run with Codex's last report.
+  - **Accept:** call `ExitPlanMode` with the plan unchanged. It skips the review and opens the approval dialog with the open blockers listed.
+- **Code:** the hook blocks once. Change no code; list each open blocker with your triage, ask the user with `AskUserQuestion` whether to run more rounds or accept them as open, and stop.
   - **More rounds:** fix or answer the blockers and stop. A changed tree starts a fresh run over the whole section. If you only answered findings with evidence and changed nothing, end the reply with the exact line `Codex: review again` to have the unchanged tree reviewed with your reply.
   - **Accept:** move on. Nothing is recorded, so later reviews still cover the section and may raise the same blockers.

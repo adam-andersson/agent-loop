@@ -57,26 +57,37 @@ test("a revised plan is reviewed with Codex's previous report, and the run ends 
   assert.equal(t.state("plan").round, 0);
 });
 
-test("hands the plan to the user at the round cap with the blockers still open", () => {
+test("at the round cap with blockers open, sends them to Claude to put the choice to the user", () => {
   const t = setup({ config: { planRounds: 2 } });
   t.respondWith(revise(), revise(blockingFinding({ claim: "still unsafe" })));
   assert.equal(decision(t.run("plan-review.ts", exitPlanMode())).permissionDecision, "deny");
   const result = t.run("plan-review.ts", exitPlanMode());
-  assert.equal(decision(result).permissionDecision, "ask");
-  assert.match(decision(result).permissionDecisionReason, /needs your decision[\s\S]*still unsafe/);
-  assert.match(dialogPlan(result), /needs your decision[\s\S]*still unsafe[\s\S]*Reject and ask Claude to continue[\s\S]*approve to accept/);
+  assert.equal(decision(result).permissionDecision, "deny");
+  assert.match(decision(result).permissionDecisionReason, /needs the user's decision[\s\S]*still unsafe[\s\S]*AskUserQuestion/);
   assert.match(result.output.systemMessage, /needs your decision/);
   assert.equal(t.state("plan").round, 0);
 });
 
-test("a run that ends at the user starts over with a fresh round count and no previous report", () => {
-  const t = setup({ config: { planRounds: 2 } });
-  t.respondWith(revise(), revise(), revise(blockingFinding({ claim: "fresh" })));
-  t.run("plan-review.ts", exitPlanMode());
-  t.run("plan-review.ts", exitPlanMode());
-  const result = decision(t.run("plan-review.ts", exitPlanMode()));
-  assert.equal(result.permissionDecision, "deny");
-  assert.doesNotMatch(t.codexCalls()[2].stdin, /^## Your previous report/m);
+test("after the cap, the unchanged plan goes to the dialog with the open blockers and no new review", () => {
+  const t = setup({ config: { planRounds: 1 } });
+  t.respondWith(revise(blockingFinding({ claim: "still unsafe" })));
+  t.run("plan-review.ts", exitPlanMode("# The plan"));
+  const result = t.run("plan-review.ts", exitPlanMode("# The plan"));
+  assert.equal(decision(result).permissionDecision, "ask");
+  assert.equal(t.codexCalls().length, 1);
+  assert.match(dialogPlan(result), /accepted with 1 blocking open[\s\S]*still unsafe/);
+});
+
+test("after the cap, a revised plan starts a new run with the previous report and the plan's review notes", () => {
+  const t = setup({ config: { planRounds: 1 } });
+  t.respondWith(revise(blockingFinding({ claim: "still unsafe" })), reviewJson());
+  t.run("plan-review.ts", exitPlanMode("# The plan"));
+  const result = decision(t.run("plan-review.ts", exitPlanMode("# The plan\n\n## Review notes\n\nsafe: see a.ts:1")));
+  assert.equal(result.permissionDecision, "ask");
+  const second = t.codexCalls()[1].stdin;
+  assert.match(second, /round 1 of at most 1/);
+  assert.match(second, /## Your previous report[\s\S]*still unsafe/);
+  assert.match(second, /safe: see a\.ts:1/);
 });
 
 test("asks the user when the review failed, without counting a round", () => {

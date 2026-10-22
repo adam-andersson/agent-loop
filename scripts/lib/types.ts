@@ -37,6 +37,8 @@ export type PlanState = {
   lastReport: Review | null;
   // The token of the review block last appended to the plan in the approval dialog.
   reviewToken?: string;
+  // The plan that reached the round cap with blockers open; resubmitted unchanged, it means the user accepted them.
+  escalatedPlan?: string;
 };
 
 export type CodeState = {
