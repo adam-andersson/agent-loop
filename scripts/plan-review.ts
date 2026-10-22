@@ -36,9 +36,19 @@ function main() {
   const { root, reviews, load, save } = hookContext(input);
   const endRun = (state: PlanState) => save("plan", state);
   const state = load("plan") ?? NEW_RUN;
+  const plan = input.tool_input?.plan ?? "";
+
+  // Codex reads only the plan, so more rounds always change it: an unchanged plan after the cap
+  // is the user accepting the open blockers, and goes to the dialog without another review.
+  if (state.escalatedPlan === plan && state.lastReport) {
+    const open = blockingFindings(state.lastReport);
+    askUser(input, `Codex plan review (${config.model}): accepted with ${open.length} blocking open after the round cap.\n${formatFindings(open)}`, endRun);
+    return;
+  }
+
   const round = state.round + 1;
   const result = runCodex({
-    prompt: planPrompt({ plan: input.tool_input?.plan ?? "", previous: state.lastReport, round, cap: config.planRounds }),
+    prompt: planPrompt({ plan, previous: state.lastReport, round, cap: config.planRounds }),
     cwd: root ?? input.cwd,
     outputDir: reviews,
     label: `plan-${round}`,
@@ -63,12 +73,19 @@ function main() {
     return;
   }
 
-  // The run ends here: the user decides, and a revision after a rejection starts a new run, so
-  // rejecting at the cap is how the user asks for more rounds.
-  const verdict = blocking.length > 0 ? `needs your decision, ${blocking.length} blocking after ${round} rounds` : "approve";
-  const choice =
-    blocking.length > 0 ? "\nReject and ask Claude to continue to start a new review run, or approve to accept these blockers as open." : "";
-  askUser(input, `${header}: ${verdict}. ${summary}${findings.length > 0 ? `\n${formatFindings(findings)}` : ""}${choice}`, endRun);
+  // At the cap the user decides, through Claude, so Claude reads the blockers before the choice.
+  // The report is kept, so more rounds start a fresh run that still has it as context.
+  if (blocking.length > 0) {
+    save("plan", { round: 0, lastReport: result.review, escalatedPlan: plan });
+    respond(
+      "deny",
+      `${header}: needs the user's decision, ${blocking.length} blocking open after the round cap. ${summary}\n${formatFindings(blocking)}\nChange nothing in the plan now. List each blocker with your triage, then ask the user with AskUserQuestion whether to run more rounds or accept them as open. Follow the agent-loop:codex-review skill for either answer.`,
+      { notice: `${header}: needs your decision, ${blocking.length} blocking open after the round cap; Claude will ask.` }
+    );
+    return;
+  }
+
+  askUser(input, `${header}: approve. ${summary}${findings.length > 0 ? `\n${formatFindings(findings)}` : ""}`, endRun);
 }
 
 try {

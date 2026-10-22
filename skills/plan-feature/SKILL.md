@@ -27,7 +27,7 @@ The plan is done when every acceptance criterion has a test that would fail with
 
 Print the full plan in your message, then call `ExitPlanMode`.
 
-- **Denied with findings**: triage them with the `agent-loop:codex-review` skill, revise the plan, and call `ExitPlanMode` again.
+- **Denied with findings**: triage them with the `agent-loop:codex-review` skill, revise the plan, and call `ExitPlanMode` again. A denial at the round cap asks the user first, whether to run more rounds or accept the blockers.
 - **Approval dialog**: the user sees the plan with Codex's review, and decides. Approving it there records the plan and the section base, which turns on code review.
 
 A plan is approved only through a successful `ExitPlanMode` call. If the user approves in chat instead, call `ExitPlanMode` again so they can approve it in the dialog. Then implement the plan with the `agent-loop:implement-plan` skill.

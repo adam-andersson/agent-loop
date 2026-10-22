@@ -7,10 +7,10 @@ A Claude Code plugin in which Codex reviews Claude's plans and code, as two sepa
 ```
 Claude calls ExitPlanMode ──► Codex reviews the plan
    ▲                            │ blocking findings, under the round cap → deny: Claude triages and revises
-   └────────────────────────────┘ otherwise → the approval dialog, with the review: the user decides
+   └────────────────────────────┘ no blockers → the approval dialog, with the review: the user decides; cap reached → deny once: Claude asks the user for more rounds or accept
 ```
 
-The dialog renders only the plan, so the review is appended to the plan it shows, and taken off again, by a per-review token, before the approved plan is recorded. At the cap, rejecting and asking Claude to continue starts a new review run.
+The dialog renders only the plan, so the review is appended to the plan it shows, and taken off again, by a per-review token, before the approved plan is recorded. Codex reads only the plan, so Claude answers a finding it judges wrong under `## Review notes` in the plan. After the cap, a changed plan starts a fresh run with Codex's last report; the unchanged plan means the user accepted, and goes to the dialog with the open blockers and no new review.
 
 ## Code loop
 
