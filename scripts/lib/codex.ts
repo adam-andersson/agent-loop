@@ -27,10 +27,10 @@ export function runCodex({ prompt, cwd, outputDir, label, config, env = process.
   const run = spawnSync(env.CODEX_BIN ?? "codex", args, {
     input: prompt,
     env,
-    encoding: "utf8",
+    // The review is read from the -o file, so Codex's progress output is discarded, not buffered.
+    stdio: ["pipe", "ignore", "ignore"],
     timeout: config.timeoutSec * 1000,
     killSignal: "SIGKILL",
-    maxBuffer: 64 * 1024 * 1024,
   });
 
   if ((run.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT") return notReviewed(`codex timed out after ${config.timeoutSec}s`, rawPath);

@@ -317,3 +317,15 @@ test("a submodule's plan and section are separate from its superproject's", () =
   assert.equal(t.state("code").plan, "# The approved plan");
   assert.equal(t.state("code").round, 0);
 });
+
+test("Codex's progress output, however long, neither fails the review nor reaches the hook's output", () => {
+  const t = approved();
+  t.respondWith(revise(blockingFinding({ claim: "still broken" })));
+  t.write("a.txt", "changed\n");
+  const result = t.run("code-review.ts", stop(), { FAKE_CODEX_MODE: "chatty" });
+  assert.equal(result.status, 0);
+  assert.equal(result.output.systemMessage, undefined);
+  assert.equal(result.output.decision, "block");
+  assert.match(result.output.reason, /still broken/);
+  assert.equal(result.stderr, "");
+});

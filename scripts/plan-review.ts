@@ -19,23 +19,26 @@ function respond(permissionDecision: "ask" | "deny", reason: string, { notice = 
 
 // "ask", never "allow": the user always makes the final call on a plan. The approval dialog
 // renders only the plan, so the review is appended to it, under a token plan-approved.ts uses
-// to take it off again. Without parsed input there is no plan to append to.
-function askUser(input: HookInput | undefined, reason: string, save?: (state: PlanState) => void): void {
+// to take it off again. Without parsed input there is no plan to append to. A failed review keeps
+// the run's round and report, so rejecting the dialog to retry continues the run.
+function askUser(input: HookInput | undefined, reason: string, save?: (state: PlanState) => void, keep: PlanState = NEW_RUN): void {
   if (!input) return respond("ask", reason);
   const token = randomUUID();
-  save?.({ ...NEW_RUN, reviewToken: token });
+  save?.({ ...keep, reviewToken: token });
   const plan = withReview(input.tool_input?.plan ?? "", reason, token);
   respond("ask", reason, { updatedInput: { ...input.tool_input, plan } });
 }
 
 let input: HookInput | undefined;
+let state: PlanState = NEW_RUN;
 
 function main() {
   input = readHookInput();
-  const config = loadConfig();
   const { root, reviews, load, save } = hookContext(input);
+  // Loaded before the config, so a config error keeps the run too.
+  state = load("plan") ?? NEW_RUN;
+  const config = loadConfig();
   const endRun = (state: PlanState) => save("plan", state);
-  const state = load("plan") ?? NEW_RUN;
   const plan = input.tool_input?.plan ?? "";
 
   // Codex reads only the plan, so more rounds always change it: an unchanged plan after the cap
@@ -56,7 +59,7 @@ function main() {
   });
 
   if (result.status === "not-reviewed") {
-    askUser(input, `Codex: plan NOT reviewed (${result.reason}). Approve without a review, or reject to retry.`, endRun);
+    askUser(input, `Codex: plan NOT reviewed (${result.reason}). Approve without a review, or reject to retry.`, endRun, state);
     return;
   }
 
@@ -98,5 +101,5 @@ try {
       hookContext(input!).save("plan", state);
     } catch {}
   };
-  askUser(input, `Codex review hook failed (${(error as Error).message}); the plan was not reviewed.`, endRun);
+  askUser(input, `Codex review hook failed (${(error as Error).message}); the plan was not reviewed.`, endRun, state);
 }

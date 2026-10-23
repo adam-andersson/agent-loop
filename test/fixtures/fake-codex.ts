@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync, writeSync } from "node:fs";
 
 const args = process.argv.slice(2);
 const stdin = readFileSync(0, "utf8");
@@ -22,6 +22,15 @@ if (counterFile) {
   writeFileSync(counterFile, String(call + 1));
 }
 const responseFile = responses[Math.min(call, responses.length - 1)];
+
+// Codex prints its progress as it works; past 64 MiB on either stream a buffering caller fails.
+if (mode === "chatty") {
+  const chunk = "x".repeat(1024 * 1024);
+  for (let i = 0; i <= 64; i++) {
+    writeSync(1, chunk);
+    writeSync(2, chunk);
+  }
+}
 
 switch (mode) {
   case "exit-nonzero":

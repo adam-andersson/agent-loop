@@ -90,22 +90,48 @@ test("after the cap, a revised plan starts a new run with the previous report an
   assert.match(second, /safe: see a\.ts:1/);
 });
 
-test("asks the user when the review failed, without counting a round", () => {
+// A blocked round, a failed one, then a retry: the failure neither counts a round nor drops the report.
+function assertRunResumes(t: ReturnType<typeof setup>) {
+  assert.equal(t.state("plan").round, 1);
+  assert.match(t.state("plan").lastReport!.findings[0].claim, /the plan skips migration/);
+  t.run("plan-review.ts", exitPlanMode());
+  const retry = t.codexCalls().at(-1)!.stdin;
+  assert.match(retry, /review round 2 of at most 3/);
+  assert.match(retry, /the plan skips migration/);
+}
+
+test("asks the user when the review failed, without counting a round or losing the run", () => {
   const t = setup();
+  t.respondWith(revise(blockingFinding({ claim: "the plan skips migration" })), reviewJson());
+  t.run("plan-review.ts", exitPlanMode());
   const result = t.run("plan-review.ts", exitPlanMode(), { FAKE_CODEX_MODE: "exit-nonzero" });
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /NOT reviewed/);
   assert.match(dialogPlan(result), /NOT reviewed/);
-  assert.equal(t.state("plan").round, 0);
+  assertRunResumes(t);
 });
 
-test("asks the user when the hook itself fails", () => {
+test("asks the user when the hook itself fails, without losing the run", () => {
   const t = setup();
+  t.respondWith(revise(blockingFinding({ claim: "the plan skips migration" })), reviewJson());
+  t.run("plan-review.ts", exitPlanMode());
   const result = t.run("plan-review.ts", exitPlanMode(), { CLAUDE_PLUGIN_OPTION_TIMEOUTSEC: "abc" });
   assert.equal(result.status, 0);
   assert.equal(decision(result).permissionDecision, "ask");
   assert.match(decision(result).permissionDecisionReason, /not reviewed/);
   assert.match(dialogPlan(result), /^# Plan[\s\S]*hook failed[\s\S]*not reviewed/);
+  assertRunResumes(t);
+});
+
+test("approving after a failed review ends the run and takes the warning off the plan", () => {
+  const t = setup();
+  t.commitAll("init");
+  t.respondWith(revise());
+  t.run("plan-review.ts", exitPlanMode("# The plan"));
+  const shown = dialogPlan(t.run("plan-review.ts", exitPlanMode("# The plan"), { FAKE_CODEX_MODE: "exit-nonzero" }));
+  t.run("plan-approved.ts", planApproved(shown));
+  assert.equal(t.state("plan").round, 0);
+  assert.equal(t.state("code").plan, "# The plan");
 });
 
 test("the warning from a failed hook comes off the approved plan too", () => {
