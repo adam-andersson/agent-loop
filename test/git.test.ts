@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { repoRoot, sharedStateKey, snapshotTree } from "../scripts/lib/git.ts";
@@ -104,4 +104,93 @@ test("snapshotTree leaves HEAD, the index and the working tree status untouched"
   assert.equal(git(dir, "rev-parse", "HEAD"), head);
   assert.equal(git(dir, "status", "--porcelain"), status);
   assert.equal(git(dir, "log", "--oneline").split("\n").length, 1);
+});
+
+function blob(dir: string, tree: string, file: string): string {
+  return git(dir, "rev-parse", `${tree}:${file}`);
+}
+
+test("snapshotTree sees edits to assume-unchanged and skip-worktree files, and leaves their flags in the index", () => {
+  const dir = tempRepo();
+  writeFileSync(path.join(dir, "skipped.txt"), "one\n");
+  git(dir, "add", "skipped.txt");
+  git(dir, "commit", "-q", "-m", "skipped");
+  git(dir, "update-index", "--assume-unchanged", "tracked.txt");
+  git(dir, "update-index", "--skip-worktree", "skipped.txt");
+  writeFileSync(path.join(dir, "tracked.txt"), "assumed edit\n");
+  writeFileSync(path.join(dir, "skipped.txt"), "skipped edit\n");
+  const flags = git(dir, "ls-files", "-v");
+  const tree = snapshotTree(dir);
+  assert.equal(blob(dir, tree, "tracked.txt"), git(dir, "hash-object", "tracked.txt"));
+  assert.equal(blob(dir, tree, "skipped.txt"), git(dir, "hash-object", "skipped.txt"));
+  assert.equal(git(dir, "ls-files", "-v"), flags);
+});
+
+test("snapshotTree sees a same-size edit made within the index's racy window", () => {
+  const dir = tempRepo();
+  // Compare only mtime seconds and size, so the edit below is invisible to the stat check alone.
+  git(dir, "config", "core.checkStat", "minimal");
+  git(dir, "config", "core.trustctime", "false");
+  const file = path.join(dir, "tracked.txt");
+  const time = new Date(Math.floor(Date.now() / 1000) * 1000 - 60_000);
+  utimesSync(file, time, time);
+  git(dir, "add", "tracked.txt");
+  utimesSync(path.join(dir, ".git", "index"), time, time);
+  writeFileSync(file, "two\n");
+  utimesSync(file, time, time);
+  assert.equal(blob(dir, snapshotTree(dir), "tracked.txt"), git(dir, "hash-object", "tracked.txt"));
+});
+
+test("snapshotTree works in a repository with no commits and no index", () => {
+  const dir = realpathSync(mkdtempSync(path.join(tmpdir(), "git-test-")));
+  git(dir, "init", "-q", "-b", "main");
+  writeFileSync(path.join(dir, "new.txt"), "untracked\n");
+  assert.equal(git(dir, "ls-tree", "-r", "--name-only", snapshotTree(dir)), "new.txt");
+});
+
+test("snapshotTree on a split index adds and removes no shared index, and leaves the real index readable", () => {
+  const dir = tempRepo();
+  git(dir, "config", "core.splitIndex", "true");
+  git(dir, "config", "splitIndex.maxPercentChange", "0");
+  git(dir, "config", "splitIndex.sharedIndexExpire", "now");
+  writeFileSync(path.join(dir, "staged.txt"), "staged\n");
+  git(dir, "add", "staged.txt");
+  writeFileSync(path.join(dir, "tracked.txt"), "unstaged edit\n");
+  const shared = () => readdirSync(path.join(dir, ".git")).filter((name) => name.startsWith("sharedindex.")).sort();
+  const before = shared();
+  assert.ok(before.length > 0);
+  const staged = git(dir, "ls-files", "-s");
+  const tree = snapshotTree(dir);
+  assert.equal(blob(dir, tree, "tracked.txt"), git(dir, "hash-object", "tracked.txt"));
+  assert.deepEqual(shared(), before);
+  assert.equal(git(dir, "ls-files", "-s"), staged);
+});
+
+test("snapshotTree keeps a tracked executable's mode when core.filemode=false comes from the inherited environment", () => {
+  const dir = tempRepo();
+  const script = path.join(dir, "run.sh");
+  writeFileSync(script, "#!/bin/sh\n");
+  chmodSync(script, 0o755);
+  git(dir, "add", "run.sh");
+  git(dir, "commit", "-q", "-m", "executable");
+  chmodSync(script, 0o644);
+  const inherited = { GIT_CONFIG_COUNT: "1", GIT_CONFIG_KEY_0: "core.filemode", GIT_CONFIG_VALUE_0: "false" };
+  Object.assign(process.env, inherited);
+  try {
+    assert.match(git(dir, "ls-tree", snapshotTree(dir), "run.sh"), /^100755 /);
+  } finally {
+    for (const key of Object.keys(inherited)) delete process.env[key];
+  }
+});
+
+test("snapshotTree of an unedited sparse checkout is HEAD's tree, out-of-cone files included", () => {
+  const dir = tempRepo();
+  for (const sub of ["kept", "sparse"]) {
+    mkdirSync(path.join(dir, sub));
+    writeFileSync(path.join(dir, sub, "file.txt"), `${sub}\n`);
+  }
+  git(dir, "add", ".");
+  git(dir, "commit", "-q", "-m", "two directories");
+  git(dir, "sparse-checkout", "set", "kept");
+  assert.equal(snapshotTree(dir), git(dir, "rev-parse", "HEAD^{tree}"));
 });
